@@ -1,0 +1,118 @@
+rules_version = '2';
+
+// Default-deny: every collection below is explicitly opened; anything not
+// listed stays unreadable and unwritable. All privileged writes (usage
+// counters, conversion/comparison/document records, audit logs, system
+// config) go through server route handlers using firebase-admin, which
+// bypasses these rules entirely — so "no client write" here really does mean
+// "server-only", not "unenforced".
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    // users/{uid} — profile + tier. A user may read/create/update their own
+    // profile document directly (e.g. first-run creation from the client),
+    // but the `tier` field is only ever trusted when it was actually set by
+    // `/api/users/me` (a server route) — see lib/auth/tier.ts, which is the
+    // sole place any server code reads tier from. Direct client writes here
+    // are for the profile shell only; nothing server-security-relevant reads
+    // a tier value without going through that route.
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isOwner(uid);
+    }
+
+    // conversions/{id}, comparisons/{id}, documents/{id} — activity records.
+    // Always written by server routes (firebase-admin), which set `userId`
+    // to the caller's verified uid and resolve `tier` server-side — never
+    // from a client-supplied value. Clients may only ever read their own.
+    match /conversions/{id} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid || isAdmin();
+      allow write: if false;
+    }
+
+    match /comparisons/{id} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid || isAdmin();
+      allow write: if false;
+    }
+
+    match /documents/{id} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid || isAdmin();
+      allow write: if false;
+    }
+
+    // errorLogs/{id} — every conversion/extraction failure and unmapped
+    // letter, written by `/api/error-logs` and by server routes via
+    // `captureServerIssue`. Anonymous reports are stored with `userId: null`
+    // and so are readable only by an admin; a signed-in user can read back
+    // their own. Never client-writable: `userId` must come from the verified
+    // token, not from whoever is posting.
+    match /errorLogs/{id} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid || isAdmin();
+      allow write: if false;
+    }
+
+    // feedback/{id} — user complaints and reviews from the form under each
+    // workspace, written by `/api/feedback`. Triage fields (`status`,
+    // `adminNote`) are only ever set by `/api/admin/feedback`, so even an
+    // admin has no client write path here.
+    match /feedback/{id} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid || isAdmin();
+      allow write: if false;
+    }
+
+    // usage/{uid} — rolling counters, server-only (FieldValue.increment via
+    // firebase-admin). Not directly client-writable even by the owner.
+    match /usage/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if false;
+    }
+
+    // auditLogs/{id} — admin-only read, server-only write.
+    match /auditLogs/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // systemConfig/{doc} — tier overrides / feature flags. Publicly readable
+    // (drives client-side UX like limit displays) but only server-verified
+    // admin routes may write it.
+    match /systemConfig/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // usageOverrides/{uid} — a per-user usage-limit override set by an
+    // admin (`/api/admin/users/{uid}`). The affected user may read their own
+    // (so the client can show "your limit was raised"); only the admin
+    // route (firebase-admin) ever writes it.
+    match /usageOverrides/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if false;
+    }
+
+    // adminStats/totals, adminStatsDaily/{date} — denormalized counters for
+    // the admin overview. Admin-only read; server-only write (bumped by
+    // `lib/firebase/adminStats.ts` alongside every activity record).
+    match /adminStats/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /adminStatsDaily/{date} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+  }
+}

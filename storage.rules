@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Default-deny. Uploaded documents live at users/{uid}/documents/{docId}/{filename}
+// (see lib/firebase/recordActivity.ts) and are only ever written by
+// /api/documents/extract via firebase-admin (which bypasses these rules) —
+// there is no direct client upload path. These rules exist so a signed-in
+// user can read back their own previously uploaded file if the UI ever adds
+// that, and so nothing else is reachable even by accident.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{uid}/documents/{docId}/{fileName} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Everything else stays unreachable.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

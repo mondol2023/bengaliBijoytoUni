@@ -1,0 +1,111 @@
+/**
+ * Verified (input → expected output) cases for the Bijoy encoding, checked
+ * against `features/converter/encodings/bijoy/map.ts`'s cross-referenced
+ * rule table (see that file's doc comment for sources). The round-trip
+ * cases below are carried over from OpenBangla/poriborton's own unit tests
+ * (MIT-licensed; direction inverted, since that crate converts the other
+ * way, Unicode → Bijoy) — those are genuine known-correct pairs, not just
+ * internally-consistent-with-itself placeholders. Cases without that
+ * provenance are still only as verified as the rule table underneath them.
+ * Real cases this gets wrong should be added here and fixed in `map.ts`
+ * together, per that file's doc comment.
+ */
+
+export interface ConversionFixture {
+  description: string;
+  input: string;
+  expected: string;
+}
+
+export const bijoyFixtures: ConversionFixture[] = [
+  { description: "independent vowel", input: "A", expected: "অ" },
+  { description: "multi-char independent vowel (longest match)", input: "Av", expected: "আ" },
+  { description: "plain consonant", input: "K", expected: "ক" },
+  {
+    description: "consonant + after-consonant kar (no reorder needed)",
+    input: "Kv",
+    expected: "কা",
+  },
+  {
+    description: "before-consonant vowel sign typed before its consonant, reordered after",
+    input: "wK",
+    expected: "কি",
+  },
+  {
+    description: "reph typed after its consonant, reordered before",
+    input: "K©",
+    expected: "র্ক",
+  },
+  {
+    description: "hasant forms a conjunct between two consonants",
+    input: "K&L",
+    expected: "ক্খ",
+  },
+  {
+    description: "anusvara after consonant",
+    input: "Ks",
+    expected: "কং",
+  },
+  {
+    description: "chandrabindu after consonant",
+    input: "Ku",
+    expected: "কঁ",
+  },
+  {
+    description: "digits",
+    input: "0123456789",
+    expected: "০১২৩৪৫৬৭৮৯",
+  },
+  {
+    description: "whitespace passthrough between words",
+    input: "K L",
+    expected: "ক খ",
+  },
+  // --- Round-trip cases from OpenBangla/poriborton's test suite (MIT) ---
+  { description: "poriborton: word with anusvara + visarga", input: "`ytL", expected: "দুঃখ" },
+  { description: "poriborton: word with chandrabindu", input: "Pvu`", expected: "চাঁদ" },
+  { description: "poriborton: word with reph", input: "AK©", expected: "অর্ক" },
+  {
+    description: "poriborton: full Bengali alphabet, vowels+consonants",
+    input: "stAAvBCDEFGHIJKLMNOPQRSTUVWXYZ_`abcdefghijklmnpoqh",
+    expected: "ংঃঅআইঈউঊঋএঐওঔকখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলশষসহঢ়ড়য়য",
+  },
+  {
+    description: "poriborton: digits, taka sign, dari, double dari",
+    input: "0123456789$|\\",
+    expected: "০১২৩৪৫৬৭৮৯৳।॥",
+  },
+  {
+    description: "poriborton: sentence with hasant-formed conjunct and o-kar",
+    input: "evsjv Avgvi fvlv| Avwg evsjvq †`wL ¯^cœ!",
+    expected: "বাংলা আমার ভাষা। আমি বাংলায় দেখি স্বপ্ন!",
+  },
+  { description: "poriborton: fused consonant+u-kar (কু)", input: "Kz", expected: "কু" },
+  { description: "poriborton: fused গু glyph", input: "¸", expected: "গু" },
+  { description: "poriborton: fused শু glyph", input: "ï", expected: "শু" },
+  { description: "poriborton: fused হু glyph", input: "û", expected: "হু" },
+  { description: "poriborton: fused রু glyph (র + ু)", input: "i“", expected: "রু" },
+  { description: "poriborton: fused রূ glyph (র + ূ)", input: "iƒ", expected: "রূ" },
+  { description: "poriborton: o-kar composite (ে + v)", input: "†Kv", expected: "কো" },
+  { description: "poriborton: ou-kar composite (ে + Š)", input: "†KŠ", expected: "কৌ" },
+  { description: "poriborton: dedicated ক্ষ conjunct byte", input: "¶", expected: "ক্ষ" },
+  { description: "poriborton: dedicated জ্ঞ conjunct byte", input: "Á", expected: "জ্ঞ" },
+
+  // --- Real document: a Bangladeshi govt job circular (SutonnyMJ) ---
+  // The cases that first exposed the "ÿ"/"ø"/"Ö"/"¤ú" table bugs. Each of
+  // these came out visibly wrong (শিড়্গা, ক¤িúউটার, ডিপেস্নামা, শেÖণি) or
+  // raised an unmapped-character warning before the map.ts fixes.
+  { description: "real doc: ক্ষ via the ÿ byte (not ড়্গ)", input: "wkÿv", expected: "শিক্ষা" },
+  { description: "real doc: ম্প via the ¤ú half-form pair", input: "Kw¤úDUvi", expected: "কম্পিউটার" },
+  { description: "real doc: প্ল via la-fola ø (not স্ন)", input: "wW‡cøvgv", expected: "ডিপ্লোমা" },
+  { description: "real doc: স্ন via mœ, the byte pair that means it", input: "mœvb", expected: "স্নান" },
+  { description: "real doc: শ্র via standalone ra-fola Ö", input: "‡kÖwY", expected: "শ্রেণি" },
+  { description: "real doc: গ্র + reph-free ra-fola", input: "AMÖvwaKvi", expected: "অগ্রাধিকার" },
+  { description: "real doc: ক্ত conjunct byte in context", input: "cÖhyw³", expected: "প্রযুক্তি" },
+  { description: "real doc: ja-fola after a bare consonant", input: "Z_¨", expected: "তথ্য" },
+  {
+    description: "real doc: full circular sentence, ক্ষ + ম্প + প্ল + শ্র together",
+    input: "wkÿv †evW© n‡Z Kw¤úDUvi wW‡cøvgv/mggvb MÖnY‡hvM¨ n‡e bv|",
+    expected: "শিক্ষা বোর্ড হতে কম্পিউটার ডিপ্লোমা/সমমান গ্রহণযোগ্য হবে না।",
+  },
+];
