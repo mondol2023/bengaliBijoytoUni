@@ -73,6 +73,6 @@ export function convertDocument(
 }
 
 export { detectEncoding, normalizeText };
-export { validateUnicodeOutput } from "./validate";
-export type { ValidationResult } from "./validate";
+export { validateUnicodeOutput, formatUnmappedDetail, formatUnmappedDetails } from "./validate";
+export type { ValidationResult, UnmappedDetail } from "./validate";
 export type { DetectionResult, EncodingScore } from "./detectEncoding";

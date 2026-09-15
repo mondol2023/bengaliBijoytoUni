@@ -21,10 +21,23 @@ const CLUSTER_CONTINUATION = /^্/u;
  * already picked up its own vowel sign(s), so we skip back over any trailing
  * marks, then over the cluster itself — including hasant-joined halves, so
  * "ক ্ ত ©" lands as র্ক্ত rather than ক্র্ত.
+ *
+ * Folas carried on a single token (Bijoy's "¨" => ্য, "Ö" => ্র, "ø" => ্ল)
+ * are part of that cluster too, and are skipped by the same logic: "K¨©"
+ * has to land as র্ক্য, not কর্্য. They are matched by
+ * `CLUSTER_CONTINUATION` but not by `VIRAMA_ONLY`, which covers only a bare
+ * hasant standing between two separately-tokenized consonants.
  */
 function rephInsertIndex(output: Token[]): number {
   let at = output.length;
   while (at > 0 && MARK_ONLY.test(output[at - 1].unicode)) at -= 1;
+  while (
+    at > 0 &&
+    CLUSTER_CONTINUATION.test(output[at - 1].unicode) &&
+    !VIRAMA_ONLY.test(output[at - 1].unicode)
+  ) {
+    at -= 1;
+  }
   if (at > 0) at -= 1;
   while (at > 0 && VIRAMA_ONLY.test(output[at - 1].unicode)) at -= 2;
   return Math.max(at, 0);

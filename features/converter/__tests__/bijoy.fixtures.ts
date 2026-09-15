@@ -108,4 +108,52 @@ export const bijoyFixtures: ConversionFixture[] = [
     input: "wkÿv †evW© n‡Z Kw¤úDUvi wW‡cøvgv/mggvb MÖnY‡hvM¨ n‡e bv|",
     expected: "শিক্ষা বোর্ড হতে কম্পিউটার ডিপ্লোমা/সমমান গ্রহণযোগ্য হবে না।",
   },
+
+  // --- Gaps found by round-tripping banglakit/bondhon's table (MIT) ---
+  // Its 354 (Unicode, Bijoy-ASCII) pairs were fed through this pipeline;
+  // 323 already matched, confirming most of the "missing" rules a naive
+  // table diff reports are in fact composed by the generic fola/reph rules.
+  // The cases below are the ones that genuinely came out wrong, each now
+  // fixed in map.ts (or, for the reph forms, in engine/reorder.ts).
+  { description: "bondhon: reph over a ja-fola cluster (was কর্্য)", input: "K¨©", expected: "র্ক্য" },
+  { description: "bondhon: reph over ন্ত + ja-fola", input: "š—¨©", expected: "র্ন্ত্য" },
+  { description: "bondhon: reph over ম + ja-fola", input: "g¨©", expected: "র্ম্য" },
+  { description: "bondhon: la-fola via the 0xAD byte (was unmapped)", input: "M­", expected: "গ্ল" },
+  { description: "bondhon: la-fola via the 0xAD byte, ল্ল", input: "j­", expected: "ল্ল" },
+  { description: "bondhon: la-fola via the 0xAC byte, ক্ল", input: "K¬", expected: "ক্ল" },
+  { description: "bondhon: alternate ঢ় spelling (was ূঢ়)", input: "~p", expected: "ঢ়" },
+  { description: "bondhon: visible hasant keeps its ZWNJ, ল্‌ফ", input: "j&d", expected: "ল্‌ফ" },
+  { description: "bondhon: visible hasant keeps its ZWNJ, ঙ্‌ক্ত", input: "O&³", expected: "ঙ্‌ক্ত" },
+
+  // --- Gaps found by round-tripping OpenBangla/poriborton's tests (MIT) ---
+  // A second, independent corpus: 677 (Unicode, Bijoy-ASCII) pairs taken
+  // from that crate's own unit tests, which descend from Avro Keyboard's
+  // implementation rather than from bondhon. 658 matched on the first run.
+  // Of the 19 that did not, 15 are the deviations map.ts already argues for
+  // deliberately (the U+2212 la-fola spelling it rejects to protect
+  // encoding detection, plus "ÿ" => ক্ষ and "ø" => ্ল, where a legacy
+  // document outranks a table that read the font instead of typing it).
+  // The remaining four are fixed here.
+  { description: "poriborton: ু via the “ byte, after র", input: "i“×", expected: "রুদ্ধ" },
+  { description: "poriborton: ু via the “ byte, after a ra-fola", input: "aª“e", expected: "ধ্রুব" },
+  { description: "poriborton: ু via the “ byte, after a la-fola", input: "Avc­“Z", expected: "আপ্লুত" },
+  // The pre-base "w" sits between the hasant and the ক্ত it joins, so no
+  // whole-sequence rule can see the pair. `bijoy/rules.ts` matches on the
+  // consonants either side instead, skipping the vowel sign.
+  { description: "poriborton: visible hasant split by a pre-base vowel", input: "cO&w³", expected: "পঙ্‌ক্তি" },
+
+  // --- Half-forms composing, from the Al-Shahrior/Bangla-Unicode-to-ANSI diff ---
+  // A third corpus (222 pairs, GPL-3.0 — facts only, and only where the two
+  // MIT corpora already agree) round-tripped at 211/222. Every failure was a
+  // cluster whose two halves `map.ts` already knew but whose assembled pair it
+  // did not list, which is what the half-form block there now fixes. These five
+  // are the ones it recovered; the rest stay unmapped on purpose (see that
+  // block's "deliberately absent" note).
+  { description: "half-form: ্ব via the ^ byte", input: "Y^", expected: "ণ্ব" },
+  { description: "half-form: ্ব via the ¦ byte", input: "j¦", expected: "ল্ব" },
+  { description: "half-form: ্ণ via the è byte", input: "nè", expected: "হ্ণ" },
+  { description: "half-form: a leading দ্ half before a plain consonant", input: "˜N", expected: "দ্ঘ" },
+  // Two halves meeting: "¯" is স্ and "­" is ্ল, so the naive concatenation
+  // is স্্ল. `bijoy/rules.ts` collapses the doubled hasant.
+  { description: "half-form: leading and trailing halves collapse one hasant", input: "¯­", expected: "স্ল" },
 ];

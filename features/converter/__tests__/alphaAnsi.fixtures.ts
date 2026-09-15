@@ -24,6 +24,21 @@ export const alphaAnsiFixtures: ConversionFixture[] = [
   { description: "dedicated ক্ত byte pair", input: "š²", expected: "ক্ত" },
   { description: "dedicated স্ত byte pair", input: "Ù¹", expected: "স্ত" },
   { description: "dari", input: "z", expected: "।" },
+
+  // --- Post-base marks (the tail slots । see the note in alphaAnsi/map.ts) ---
+  // ৎ/ঃ/ঁ were missing until a user's document flagged them as unmapped;
+  // their bytes were pinned by aligning this layout's tail against Boishakhi
+  // rather than guessed. য় and ং sit either side of them and are already
+  // proved by the land-record paragraph below, so these cases lock the whole
+  // run in place: a future edit that shifts one slot breaks them all.
+  // য় is spelled য + ়, not U+09DF: the precomposed letter is a Unicode
+  // composition exclusion, so NFC decomposes it and that is the form the
+  // pipeline emits.
+  { description: "য়, one byte after Boishakhi's", input: "eu", expected: "নয়" },
+  { description: "khanda ta between the confirmed য় and ং", input: "qW¡v", expected: "হঠাৎ" },
+  { description: "anusvara", input: "h¡wm¡", expected: "বাংলা" },
+  { description: "visarga — one of the bytes the user's document flagged", input: "c¤xM", expected: "দুঃখ" },
+  { description: "chandrabindu follows the vowel sign it sits over", input: "Q¡yc", expected: "চাঁদ" },
   { description: "digits", input: "0123456789", expected: "০১২৩৪৫৬৭৮৯" },
   {
     description: "real land-record paragraph round-trips to its confirmed transcription",

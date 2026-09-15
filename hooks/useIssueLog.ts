@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { recordIssue } from "@/lib/log/reportIssue";
 import { eventKey, type ConversionLogInput, type LogEventKind, type LogSource } from "@/lib/log/conversionLog";
-import type { ValidationResult } from "@/features/converter/engine/pipeline";
+import { formatUnmappedDetails, type ValidationResult } from "@/features/converter/engine/pipeline";
 import type { SafeErrorResponse } from "@/lib/errors/handlers";
 import type { AppError, AppErrorCode } from "@/lib/errors/types";
 
@@ -22,11 +22,27 @@ const KIND_BY_CODE: Partial<Record<AppErrorCode, LogEventKind>> = {
 /** Mirrors `ERROR_LOG_LIMITS.maxSamples` — kept small here too so the visible log stays readable. */
 const MAX_SAMPLES = 20;
 
+/** Details spelled out in a log row's message; `ERROR_LOG_LIMITS.maxMessageLength` clamps the rest. */
+const MAX_LOGGED_DETAILS = 4;
+
 export interface IssueContext {
   source: LogSource;
   encodingId?: string | null;
   fileName?: string | null;
   fileType?: string | null;
+}
+
+/**
+ * The log row's headline plus, where the engine could work them out, the
+ * windows of converted text around each unmapped byte. `samples` stays the
+ * bare sequence list because `summarizeLog` builds the "letters that failed
+ * to convert" chips from it — the context belongs in the message instead,
+ * so a persisted row still says where the problem was.
+ */
+function unmappedMessage(validation: ValidationResult): string {
+  const headline = `${validation.unmappedSequences.length} legacy character sequence(s) had no mapping rule and were passed through unchanged.`;
+  const details = formatUnmappedDetails(validation.unmappedDetails, MAX_LOGGED_DETAILS);
+  return details ? `${headline}\n${details}` : headline;
 }
 
 /**
@@ -68,7 +84,7 @@ export function deriveIssues(
         kind: "unmapped_character",
         severity: "warning",
         code: "UNMAPPED_CHARACTER",
-        message: `${validation.unmappedSequences.length} legacy character sequence(s) had no mapping rule and were passed through unchanged.`,
+        message: unmappedMessage(validation),
         samples: validation.unmappedSequences.slice(0, MAX_SAMPLES),
       });
     } else {

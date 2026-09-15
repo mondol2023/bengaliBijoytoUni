@@ -19,10 +19,17 @@ import type { GlyphRule } from "../types";
  * Provenance: derived from a real document paired with its correct Unicode
  * transcription, then verified end-to-end — see
  * `__tests__/alphaAnsi.fixtures.ts`, which round-trips that full paragraph.
- * Entries below are exactly what that sample proves. Bytes the sample never
- * exercised (ৎ, ঃ, ঁ, most conjuncts, the second halves of the ু/ূ/ৃ byte
- * pairs) are deliberately absent rather than guessed: they will surface as
- * unmapped warnings, which is actionable. Add them from new samples.
+ * Entries below are what that sample proves, plus the ৎ/ঃ/ঁ tail slots,
+ * which a later user document raised as unmapped and which are pinned by
+ * structural alignment against a second layout rather than guessed — see
+ * the note on them below. Bytes still unaccounted for (the "t" slot, most
+ * conjuncts, the second halves of the ু/ূ/ৃ byte pairs) are deliberately
+ * absent rather than guessed: they will surface as unmapped warnings, which
+ * is actionable. Add them from new samples.
+ *
+ * When a real document raises unmapped bytes here, the report from
+ * `engine/validate.ts` now names each one's position and the converted text
+ * around it, which is what turns "byte Ê is unmapped" into a fixture.
  */
 export const alphaAnsiRules: GlyphRule[] = [
   // --- Independent vowels (each has its own byte, unlike Bijoy's "Av") ---
@@ -76,7 +83,25 @@ export const alphaAnsiRules: GlyphRule[] = [
   { match: "u", unicode: "য়" },
 
   // --- Post-base marks ---
-  { match: "w", unicode: "ং" },
+  // ৎ/ঃ/ঁ were absent until a user document raised them as unmapped. They
+  // are not guesses: this layout's tail was pinned by aligning it against
+  // the Boishakhi table in banglakit/bondhon (MIT), which is the same
+  // alphabetic-order family shifted one slot earlier (Boishakhi spells আ as
+  // the digraph "Aw"; this layout gives আ its own byte "B"). Boishakhi runs
+  // ...r=ড়, s=ঢ়, t=য়, u=ৎ, v=ং; here য়/ং sit one byte later at u/w, which
+  // the fixtures independently confirm, as they do z=।. That brackets the
+  // gaps: "v" falls between the confirmed য় and ং, and the canonical
+  // varnamala tail there is য় ৎ ং ঃ ঁ — so v=ৎ, then x=ঃ and y=ঁ filling
+  // the two slots between the confirmed ং and ।. "x" is one of the bytes
+  // the user's document flagged, and ঃ is common in real Bangla text.
+  //
+  // "t" (between ঢ় and য়) is the one slot this derivation does NOT settle
+  // — Boishakhi leaves its equivalent position empty — so it stays absent
+  // and will keep surfacing as an unmapped warning, per the policy above.
+  { match: "v", unicode: "ৎ" }, // khanda ta (derived — see note)
+  { match: "w", unicode: "ং" }, // anusvara (confirmed by fixtures)
+  { match: "x", unicode: "ঃ" }, // visarga (derived — see note)
+  { match: "y", unicode: "ঁ" }, // chandrabindu (derived — see note)
 
   // --- Digits & dari ---
   { match: "0", unicode: "০" },

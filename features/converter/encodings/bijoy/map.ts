@@ -25,14 +25,21 @@ import type { GlyphRule } from "../types";
  *    separately-authored port, used only where it agrees with the sources
  *    above (e.g. the standalone ja-fola/ra-fola bytes below) as a
  *    two-source-minimum bar before a byte↔glyph pair went into this table.
+ *  - banglakit/bondhon (`bijoy_classic.py`, MIT) and Al-Shahrior/
+ *    Bangla-Unicode-to-ANSI (`addons/U2B/u2b_class.gd`, GPL-3.0) — two later
+ *    additions, both Unicode→ANSI. Neither is read directly; each is run
+ *    backwards through this table's own pipeline (354 and 222 pairs) and only
+ *    the mismatches are looked at. Same rule as the AGPL lineage above: the
+ *    byte↔glyph facts only, and only where a second source agrees.
  *
- * A handful of bytes only ever turned up in one source (the low Latin-1
- * range ¡¢£¤¥¦§®¯, claimed by the AGPL lineage as standalone hasant+consonant
- * half-forms but absent — even as compounds — from the other two sources)
- * and were deliberately left out pending a second source. Real Bijoy text
- * using those bytes will currently pass them through unmapped rather than
- * risk a single-source guess; see the project notes for how to add one if
- * corroborated later.
+ * The low Latin-1 range ¡¢£¤¥¦§®¯ was once left out of this table
+ * entirely: only the AGPL lineage called those bytes standalone
+ * hasant+consonant half-forms, and the other sources known at the time did
+ * not have them even as compounds. Both later corpora do, so the half-form
+ * block below now admits the ones that are safe to admit — but not all of
+ * them, and for a different reason than before: seven of those bytes are
+ * alpha-ANSI's vowel signs, and a one-byte rule for them would break
+ * encoding detection. That block spells out which, and why.
  *
  * Source weighting, and why poriborton is no longer automatically primary:
  * two entries here were wrong in a way that only real documents expose.
@@ -104,6 +111,12 @@ export const bijoyRules: GlyphRule[] = [
   { match: "n", unicode: "হ" },
   { match: "o", unicode: "ড়" },
   { match: "p", unicode: "ঢ়" },
+  // Alternate ঢ় spelling: banglakit/bondhon (MIT) emits "~p" for ঢ়, where
+  // "~" is otherwise the ূ-kar. Safe as a longest match because a ূ-kar can
+  // never legitimately precede ঢ় with no base consonant of its own — the
+  // sequence is only producible as this digraph. Without it "~p" decoded to
+  // ূঢ়.
+  { match: "~p", unicode: "ঢ়" },
   { match: "q", unicode: "য়" },
 
   // --- Digits ---
@@ -126,7 +139,22 @@ export const bijoyRules: GlyphRule[] = [
   { match: "$", unicode: "৳" }, // taka sign
 
   // --- Hasant / virama (no reorder) ---
+  // A bare hasant: "&" is genuinely dual-purpose here. It joins two
+  // consonants into a conjunct wherever the font has no dedicated ligature
+  // byte for that cluster (ক্খ has none in either corpus, and none below,
+  // so "K&L" is the only way to write it) — and it also carries the handful
+  // of clusters that Bangla orthography writes with a *visible* hasant,
+  // which Unicode spells as hasant + ZWNJ (U+200C).
+  //
+  // The two cannot be told apart from the byte alone, only from which
+  // consonants surround it, so the visible-hasant cases are identified by
+  // their consonant pair in `rules.ts` rather than by a fixed list of whole
+  // legacy sequences here. A whole-sequence rule cannot match "cO&w³" =
+  // পঙ্‌ক্তি, because the pre-base "w" sits inside the cluster.
   { match: "&", unicode: "্", reorder: "none" },
+  // "¯" (স্) has no standalone rule of its own — it only ever appears
+  // inside compounds here — so this one still has to be spelled out whole.
+  { match: "¯c&j", unicode: "স্প্‌ল", reorder: "none" },
 
   // --- Reph: typed after the consonant cluster it sits above ---
   { match: "©", unicode: "র্", reorder: "reph" },
@@ -160,6 +188,16 @@ export const bijoyRules: GlyphRule[] = [
   { match: "x", unicode: "ী", reorder: "after-consonant" },
   { match: "y", unicode: "ু", reorder: "after-consonant" },
   { match: "z", unicode: "ু", reorder: "after-consonant" },
+  // The third ু byte: the u-kar glyph that hangs off র and off a
+  // ra-/la-fola rather than sitting under a plain consonant, so a font
+  // gives it its own slot. It was missing until a second corpus
+  // (OpenBangla/poriborton, MIT) round-tripped through this table:
+  // "i“×" = রুদ্ধ, "aª“e" = ধ্রুব, "Avc­“Z" = আপ্লুত — every
+  // one of its eight occurrences there decodes with ু in this position,
+  // and banglakit/bondhon (MIT) lists "i“" => রু independently, so the
+  // two-source bar is met. The byte carries no other meaning in this
+  // family, hence a plain standalone rule rather than compounds.
+  { match: "“", unicode: "ু", reorder: "after-consonant" },
   { match: "„", unicode: "ৃ", reorder: "after-consonant" },
   { match: "…", unicode: "ৃ", reorder: "after-consonant" },
   { match: "~", unicode: "ূ", reorder: "after-consonant" },
@@ -207,6 +245,85 @@ export const bijoyRules: GlyphRule[] = [
   // real text means — cf. "wW‡cøvgv" = ডিপ্লোমা in the fixtures. স্ন is "mœ"
   // (below), which both sources agree on, so the two are not in competition.
   { match: "ø", unicode: "্ল", reorder: "none" }, // la-fola (wide form)
+  // The narrow la-fola byte was spelled three different ways in this file's
+  // own conjunct block: cp1252 0xAC (U+00AC, NOT SIGN) in the K/d/f/n/m+la
+  // conjuncts, cp1252 0xAD (U+00AD, SOFT HYPHEN) in the p/b ones, and
+  // U+2212 (MINUS SIGN) in the g/l/sh/sp ones. Only the first two are cp1252
+  // bytes at all, and banglakit/bondhon (MIT) uses 0xAD throughout, so the
+  // U+2212 spellings were transcription errors; they have been corrected to
+  // 0xAD in the conjunct block below.
+  //
+  // U+2212 is deliberately NOT accepted as an alias for it. That byte is
+  // alpha-ANSI's e-kar (see `../alphaAnsi/map.ts`) and one of the commonest
+  // characters in an alpha-ANSI document, so mapping it here would hand
+  // Bijoy a large false-positive score on alpha-ANSI input —
+  // `engine/detectEncoding.ts` measures exactly that, and its test caught
+  // the first attempt at this fix.
+  //
+  // 0xAC and 0xAD both stand, because both genuinely occur in this font
+  // family and neither byte carries any other meaning in this table. Making
+  // la-fola compositional this way matches how ra-fola and ja-fola already
+  // work; before it, the g/l/sh/h + 0xAD forms came out unmapped.
+  { match: "¬", unicode: "্ল", reorder: "none" }, // la-fola (cp1252 0xAC)
+  { match: "­", unicode: "্ল", reorder: "none" }, // la-fola (cp1252 0xAD)
+
+  // --- Half-form bytes: the compositional layer under the conjunct list ---
+  // Bijoy spells most conjuncts as a *pair* of glyph bytes: a leading
+  // consonant-plus-hasant half-form, or a trailing hasant-plus-consonant
+  // one, exactly as `¨`/`ª`/`Ö`/`¬` already work for the folas above. Until now
+  // only the assembled pairs were listed, so any cluster the list happened
+  // not to enumerate came out unmapped even though both halves were known.
+  //
+  // The header note above left these out as single-source. That no longer
+  // holds: every value below is derivable from this file's own conjunct
+  // rules (¯—=স্ত and š—=ন্ত force —=্ত whichever half you solve for), and each
+  // one is independently attested in banglakit/bondhon (MIT) and
+  // OpenBangla/poriborton (MIT). Al-Shahrior/Bangla-Unicode-to-ANSI
+  // (`addons/U2B/u2b_class.gd`, GPL-3.0) is a third, separately-authored
+  // lineage that lists them as half-forms outright; as with the AGPL
+  // lineage noted above, only the byte↔glyph facts were taken from it, and
+  // only where the two MIT corpora already agree. It is what exposed the
+  // gap: round-tripping its 222 pairs through this table left 11 failures,
+  // all of them clusters built from halves that were individually known.
+  //
+  // A leading half already carries its hasant and a trailing half carries
+  // its own, so a pair of them meets in the middle with two. `rules.ts`
+  // collapses that — Bangla never writes ্্ — which is what makes the two
+  // halves genuinely compose instead of only working for pairs listed below.
+  //
+  // Deliberately absent, and these are the ones to check before adding a byte
+  // here:
+  //
+  //  - ¡ ¢ £ ¤ ¥ § ® (্ব, ্ভ, ্ভ্র, ম্, ্ম, ্ম, ষ্). All well attested — ¡ alone
+  //    appears in 25 corpus entries — and all still enumerated as pairs below,
+  //    which is where they stay. Standalone they would wreck encoding
+  //    detection: these seven bytes are alpha-ANSI's vowel signs (া ি ী ু ু ূ ে,
+  //    see `../alphaAnsi/map.ts`), the commonest legacy bytes in such a
+  //    document, so Bijoy would score ~0.70 legacy-range coverage on
+  //    alpha-ANSI text instead of ~0.13. `engine/detectEncoding.ts` measures
+  //    exactly that and `__tests__/conversion.test.ts` asserts it stays below
+  //    0.3; adding them turned that assertion red, which is how the list above
+  //    got trimmed. Same reasoning as the U+2212 la-fola note further up, and
+  //    the same conclusion: a byte two encodings disagree about does not get a
+  //    one-byte rule. ¦ and ^ are the ্ব forms that survive, because neither
+  //    means anything in alpha-ANSI.
+  //  - ‘ (U+2018), which the GPL table reads as ্তু but which neither MIT corpus
+  //    contains at all. Single-source bytes stay out and keep surfacing as
+  //    unmapped warnings, which is the actionable outcome.
+  { match: "š", unicode: "ন্", reorder: "none" }, // ন + hasant
+  { match: "¯", unicode: "স্", reorder: "none" }, // স + hasant
+  { match: "˜", unicode: "দ্", reorder: "none" }, // দ + hasant
+
+  { match: "‹", unicode: "্ক", reorder: "none" }, // hasant + ক
+  { match: "Œ", unicode: "্ক্র", reorder: "none" }, // hasant + ক্র
+  { match: "—", unicode: "্ত", reorder: "none" }, // hasant + ত
+  { match: "¿", unicode: "্ত্র", reorder: "none" }, // hasant + ত্র
+  { match: "’", unicode: "্থ", reorder: "none" }, // hasant + থ
+  { match: "œ", unicode: "্ন", reorder: "none" }, // hasant + ন
+  { match: "è", unicode: "্ণ", reorder: "none" }, // hasant + ণ
+  { match: "ú", unicode: "্প", reorder: "none" }, // hasant + প
+  { match: "^", unicode: "্ব", reorder: "none" }, // hasant + ব
+  { match: "¦", unicode: "্ব", reorder: "none" }, // hasant + ব
 
   // --- Consonant conjuncts (each a dedicated legacy byte/sequence for a full cluster) ---
   { match: "°", unicode: "ক্ক", reorder: "none" },
@@ -236,7 +353,7 @@ export const bijoyRules: GlyphRule[] = [
   { match: "M¦", unicode: "গ্ব", reorder: "none" },
   { match: "M¥", unicode: "গ্ম", reorder: "none" },
   { match: "MÖ", unicode: "গ্র", reorder: "none" },
-  { match: "M−", unicode: "গ্ল", reorder: "none" },
+  { match: "M­", unicode: "গ্ল", reorder: "none" },
   { match: "Nœ", unicode: "ঘ্ন", reorder: "none" },
   { match: "Nª", unicode: "ঘ্র", reorder: "none" },
   { match: "¼", unicode: "ঙ্ক", reorder: "none" },
@@ -370,14 +487,14 @@ export const bijoyRules: GlyphRule[] = [
   { match: "j¡", unicode: "ল্ব", reorder: "none" },
   { match: "j¢", unicode: "ল্ভ", reorder: "none" },
   { match: "j¥", unicode: "ল্ম", reorder: "none" },
-  { match: "j−", unicode: "ল্ল", reorder: "none" },
+  { match: "j­", unicode: "ল্ল", reorder: "none" },
   { match: "ð", unicode: "শ্চ", reorder: "none" },
   { match: "ñ", unicode: "শ্ছ", reorder: "none" },
   { match: "kœ", unicode: "শ্ন", reorder: "none" },
   { match: "k¦", unicode: "শ্ব", reorder: "none" },
   { match: "k¥", unicode: "শ্ম", reorder: "none" },
   { match: "kª", unicode: "শ্র", reorder: "none" },
-  { match: "k−", unicode: "শ্ল", reorder: "none" },
+  { match: "k­", unicode: "শ্ল", reorder: "none" },
   { match: "®‹", unicode: "ষ্ক", reorder: "none" },
   { match: "®‹¡", unicode: "ষ্ক্ব", reorder: "none" },
   { match: "®Œ", unicode: "ষ্ক্র", reorder: "none" },
@@ -409,7 +526,7 @@ export const bijoyRules: GlyphRule[] = [
   { match: "mœ", unicode: "স্ন", reorder: "none" },
   { match: "¯c", unicode: "স্প", reorder: "none" },
   { match: "¯cÖ", unicode: "স্প্র", reorder: "none" },
-  { match: "¯c−", unicode: "স্প্ল", reorder: "none" },
+  { match: "¯c­", unicode: "স্প্ল", reorder: "none" },
   { match: "¯ú", unicode: "স্প", reorder: "none" },
   { match: "¯úÖ", unicode: "স্প্র", reorder: "none" },
   { match: "ù", unicode: "স্ফ", reorder: "none" },

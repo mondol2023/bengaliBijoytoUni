@@ -1,7 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTO_DETECT } from "@/features/converter/constants";
 import { getEncoding } from "@/features/converter/encodings/registry";
-import { convertDocument, detectEncoding } from "@/features/converter/engine/pipeline";
+import {
+  convertDocument,
+  detectEncoding,
+  formatUnmappedDetails,
+} from "@/features/converter/engine/pipeline";
 import { extractDocumentText } from "@/features/documents/extract";
 import { validateUsage } from "@/features/usage/usageService";
 import { logAppError, statusForAppError, toSafeResponse } from "@/lib/errors/handlers";
@@ -195,7 +199,15 @@ export async function POST(request: NextRequest) {
       kind: "unmapped_character",
       severity: "warning",
       code: "UNMAPPED_CHARACTER",
-      message: `${validation.unmappedSequences.length} legacy character sequence(s) had no mapping rule and were passed through unchanged.`,
+      message: [
+        `${validation.unmappedSequences.length} legacy character sequence(s) had no mapping rule and were passed through unchanged.`,
+        // Where each one sat in the converted text. `samples` below stays the
+        // bare byte list, so this is the only place the stored row records
+        // enough for someone to identify the missing rule later.
+        formatUnmappedDetails(validation.unmappedDetails, 4),
+      ]
+        .filter(Boolean)
+        .join("\n"),
       encodingId: conversion.value.encodingId,
       fileName: file.name,
       fileType,

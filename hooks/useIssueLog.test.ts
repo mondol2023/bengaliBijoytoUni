@@ -5,7 +5,7 @@ import type { ValidationResult } from "@/features/converter/engine/pipeline";
 const TEXT_CONTEXT = { source: "text" as const, encodingId: "bijoy" };
 
 function validation(overrides: Partial<ValidationResult> = {}): ValidationResult {
-  return { valid: true, warnings: [], unmappedSequences: [], ...overrides };
+  return { valid: true, warnings: [], unmappedSequences: [], unmappedDetails: [], ...overrides };
 }
 
 describe("deriveIssues", () => {
