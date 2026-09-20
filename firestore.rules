@@ -102,6 +102,29 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // conversionFailures/{id}, failurePatterns/{id}, aiResolutions/{id} — the
+    // conversion-failure intelligence pipeline (docs/conversion-failure-pipeline.md).
+    // Written only by server routes (`/api/conversion-failures`,
+    // `/api/admin/conversion-failures/*`) via firebase-admin. Stricter than
+    // `errorLogs`: admin-only read (not owner-or-admin), because
+    // `conversionFailures` carries the complete original conversion text —
+    // this is a deliberate deviation from the owner-can-read-their-own
+    // precedent used elsewhere.
+    match /conversionFailures/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /failurePatterns/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /aiResolutions/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // adminStats/totals, adminStatsDaily/{date} — denormalized counters for
     // the admin overview. Admin-only read; server-only write (bumped by
     // `lib/firebase/adminStats.ts` alongside every activity record).

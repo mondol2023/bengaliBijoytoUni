@@ -52,19 +52,24 @@ export function tokenize(text: string, encoding: EncodingDefinition): Token[] {
     }
 
     if (matched) {
-      tokens.push({ legacy: matched.match, unicode: matched.unicode, reorder: matched.reorder ?? "none" });
+      tokens.push({
+        legacy: matched.match,
+        unicode: matched.unicode,
+        reorder: matched.reorder ?? "none",
+        sourceIndex: i,
+      });
       i += matched.match.length;
     } else if (/\s/u.test(text[i]) || SHARED_PUNCTUATION.test(text[i])) {
       // Whitespace and shared punctuation are expected passthrough in every
       // legacy encoding — reporting them as "no mapping rule" buries the
       // characters that genuinely are unmapped. Rules still win first, so an
       // encoding that maps e.g. "|" to । is unaffected.
-      tokens.push({ legacy: text[i], unicode: text[i], reorder: "none" });
+      tokens.push({ legacy: text[i], unicode: text[i], reorder: "none", sourceIndex: i });
       i += 1;
     } else {
       // Anything else with no rule match is genuinely unrecognized: pass it
       // through unchanged (never drop/mangle it) but flag it for validation.
-      tokens.push({ legacy: text[i], unicode: text[i], reorder: "none", unmapped: true });
+      tokens.push({ legacy: text[i], unicode: text[i], reorder: "none", unmapped: true, sourceIndex: i });
       i += 1;
     }
   }

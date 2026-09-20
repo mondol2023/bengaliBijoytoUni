@@ -42,8 +42,13 @@ const UNREACHABLE_ERROR: SafeErrorResponse = {
   message: "Could not reach the server — check your connection and try again.",
 };
 
-/** Translates Firebase Auth's `auth/*` error codes into safe, specific copy instead of a raw SDK message. */
-function mapFirebaseAuthError(cause: unknown): SafeErrorResponse {
+/**
+ * Translates Firebase Auth's `auth/*` error codes into safe, specific copy
+ * instead of a raw SDK message. Exported (pure, no component/hook state)
+ * so the mapping table and its unknown-code fallback can be unit-tested
+ * directly — see `__tests__/mapFirebaseAuthError.test.ts`.
+ */
+export function mapFirebaseAuthError(cause: unknown): SafeErrorResponse {
   const code = typeof cause === "object" && cause && "code" in cause ? String(cause.code) : "";
   const messages: Record<string, string> = {
     "auth/invalid-email": "That email address doesn't look right.",

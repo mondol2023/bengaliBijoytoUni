@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { reorderTokens } from "../engine/reorder";
 import type { Token } from "../encodings/types";
 
+let nextSourceIndex = 0;
 function token(legacy: string, unicode: string, reorder: Token["reorder"] = "none"): Token {
-  return { legacy, unicode, reorder };
+  return { legacy, unicode, reorder, sourceIndex: nextSourceIndex++ };
 }
 
 describe("reorderTokens", () => {

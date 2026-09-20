@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FAILURE_CATEGORIES } from "@/features/converter/engine/classify";
 
 /**
  * Runtime shapes for every Firestore document this app writes/reads. Nothing
@@ -198,6 +199,116 @@ export const feedbackSchema = z.object({
   updatedAt: z.string(),
 });
 export type Feedback = z.infer<typeof feedbackSchema>;
+
+const failureCategorySchema = z.enum(FAILURE_CATEGORIES);
+
+/**
+ * One document per individual conversion failure occurrence — never merged,
+ * never deduplicated away (that's what `failurePatterns` is for). Deliberately
+ * richer than `errorLogSchema` and admin-only-readable (see `firestore.rules`)
+ * because it carries the complete original conversion input.
+ *
+ * `failedSequence`/`fullText` are stored exactly as received — never trimmed,
+ * normalized, or replaced — so a persisted row is real evidence a mapping
+ * rule can be fixed from, not a lossy summary of one.
+ */
+export const conversionFailureSchema = z.object({
+  userId: z.string().nullable(),
+  /** Groups every failure from one conversion attempt without a separate sessions collection. */
+  sessionId: z.string().min(1),
+  source: z.enum(["text", "file", "comparison", "api"]),
+  encodingId: z.string().nullable(),
+  engineVersion: z.string().min(1),
+  rulesHash: z.string().nullable(),
+  failureCategory: failureCategorySchema,
+  failedSequence: z.string().min(1),
+  codePoints: z.array(z.number().int().nonnegative()),
+  position: z.number().int().nonnegative().nullable(),
+  contextBefore: z.string(),
+  contextAfter: z.string(),
+  /** The complete original conversion input, capped at `MAX_FULLTEXT_LENGTH`. */
+  fullText: z.string(),
+  fullTextTruncated: z.boolean(),
+  engineOutput: z.string().nullable(),
+  errorCode: z.string().min(1),
+  errorReason: z.string().min(1),
+  severity: z.enum(["error", "warning"]),
+  fileName: z.string().nullable(),
+  fileType: z.string().nullable(),
+  route: z.string().nullable(),
+  patternId: z.string().min(1),
+  createdAt: z.string(),
+});
+export type ConversionFailure = z.infer<typeof conversionFailureSchema>;
+
+/**
+ * The dedup / cost-control key: one document per distinct
+ * `(encodingId, engineVersion, failedSequence)` combination, keyed by a
+ * deterministic hash (`lib/conversionFailures/patternId.ts`) so concurrent
+ * upserts never race or double-create. AI resolution happens at this level,
+ * not per-occurrence — see `aiResolutionSchema`.
+ */
+export const failurePatternSchema = z.object({
+  encodingId: z.string().nullable(),
+  engineVersion: z.string().min(1),
+  failedSequence: z.string().min(1),
+  failureCategory: failureCategorySchema,
+  occurrenceCount: z.number().int().positive(),
+  firstSeenAt: z.string(),
+  lastSeenAt: z.string(),
+  /** Small capped list of recent `conversionFailures` doc IDs, for admin preview without a second query. */
+  sampleOccurrenceIds: z.array(z.string()),
+  /** Set to `resolved` only by an explicit admin action once a mapping-rule fix has shipped — never automated. */
+  status: z.enum(["open", "resolved"]),
+});
+export type FailurePattern = z.infer<typeof failurePatternSchema>;
+
+/**
+ * A candidate conversion from an external AI provider, keyed to a
+ * `failurePatterns` document — never to the original `conversionFailures`
+ * row, and never overwriting it. Purely advisory: an admin accepts or
+ * rejects it via `reviewDecision`; nothing here ever patches engine rules.
+ */
+export const aiResolutionSchema = z.object({
+  patternId: z.string().min(1),
+  provider: z.enum(["gemini", "openai"]),
+  model: z.string().min(1),
+  /** Bumped whenever the prompt changes; part of the cache key alongside pattern+provider+model. */
+  promptVersion: z.string().min(1),
+  /**
+   * Added in Phase 6 (`lib/ai/resolveConversionFailure.ts`) — the original
+   * Phase 4 shape omitted these, but the resolution/dedup design needs them
+   * queryable on the doc itself, not just reachable by joining `patternId`
+   * back to `failurePatterns` (which doesn't carry `rulesHash` at all — only
+   * individual `conversionFailures` occurrences do, and those can drift
+   * independently of `engineVersion`). Never client-supplied — always the
+   * authoritative value from the `FailurePattern`/occurrence used to build
+   * the request.
+   */
+  engineVersion: z.string().min(1),
+  rulesHash: z.string().nullable(),
+  /**
+   * `null` for a real, meaningful outcome ("the provider found no usable
+   * candidate") — not an empty-string stand-in for it. Widened to nullable in
+   * Phase 6 to match `ConversionResolution.candidateConversion`
+   * (`lib/ai/types.ts`), which is `string | null` for exactly this reason;
+   * see `lib/ai/resolveConversionFailure.ts`.
+   */
+  candidateConversion: z.string().nullable(),
+  reasoningSummary: z.string().nullable(),
+  confidence: z.enum(["high", "medium", "low", "unknown"]),
+  alternativeCandidates: z.array(z.string()),
+  isCertain: z.boolean(),
+  /** JSON-stringified raw provider response, length-capped, kept for audit only — never trusted directly. */
+  rawResponse: z.string().nullable(),
+  status: z.enum(["pending", "completed", "failed", "reviewed"]),
+  reviewDecision: z.enum(["accepted", "rejected"]).nullable(),
+  reviewedBy: z.string().nullable(),
+  reviewedAt: z.string().nullable(),
+  reviewNote: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type AiResolution = z.infer<typeof aiResolutionSchema>;
 
 /**
  * Denormalized site-wide counters (`adminStats/totals`), updated with

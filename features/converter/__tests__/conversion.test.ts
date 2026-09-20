@@ -87,6 +87,69 @@ describe("convertLegacyText — edge cases", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("VALIDATION_ERROR");
   });
+
+  it("rejects an empty encoding id with a clear, actionable message instead of 'Unknown encoding \"\"'", () => {
+    const result = convertLegacyText("K", "");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("VALIDATION_ERROR");
+      expect(result.error.message).not.toContain('""');
+      expect(result.error.details?.field).toBe("encodingId");
+    }
+  });
+
+  it("rejects a non-string encoding id safely instead of reaching conversion logic", () => {
+    // Guards the boundary against callers that bypass the TS signature
+    // (an untyped JSON body, a stale client build, etc.) — must fail as a
+    // typed VALIDATION_ERROR, never throw or silently fall back.
+    const result = convertLegacyText("K", undefined as unknown as string);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("never flags a stray Bengali combining mark for any known-good fixture (no false positives)", () => {
+    for (const [encodingId, fixtures] of [
+      ["bijoy", bijoyFixtures],
+      ["sutonny", sutonnyFixtures],
+      ["alpha-ansi", alphaAnsiFixtures],
+    ] as const) {
+      for (const fixture of fixtures) {
+        const result = convertLegacyText(fixture.input, encodingId);
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value.validation.warnings.join(" ")).not.toContain("reorder defect");
+        }
+      }
+    }
+  });
+
+  it("surfaces the reorder-defect warning end-to-end when a before-consonant vowel sign has no base consonant", () => {
+    // Bijoy's "w" alone maps to the before-consonant kar ি with nothing
+    // before it to attach to — the reorder pass appends rather than drops
+    // it (see reorder.ts), and `validateUnicodeOutput` is now wired into
+    // `convertLegacyText` (previously computed but never called) so this
+    // reaches the user instead of failing silently.
+    const result = convertLegacyText("w", "bijoy");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.unicodeText).toBe("ি");
+      expect(result.value.validation.valid).toBe(false);
+      expect(
+        result.value.validation.warnings.some((warning) => warning.includes("no preceding base consonant")),
+      ).toBe(true);
+    }
+  });
+
+  it("conversion output is always NFC-normalized, so the NFC warning never fires from this pipeline", () => {
+    for (const fixture of [...bijoyFixtures, ...sutonnyFixtures]) {
+      const result = convertLegacyText(fixture.input, bijoyFixtures.includes(fixture) ? "bijoy" : "sutonny");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.unicodeText).toBe(result.value.unicodeText.normalize("NFC"));
+        expect(result.value.validation.warnings.join(" ")).not.toContain("Normalization Form C");
+      }
+    }
+  });
 });
 
 describe("convertDocument", () => {

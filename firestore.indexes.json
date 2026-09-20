@@ -64,6 +64,71 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "conversionFailures",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "patternId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "conversionFailures",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sessionId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "failurePatterns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "encodingId", "order": "ASCENDING" },
+        { "fieldPath": "lastSeenAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "failurePatterns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "failureCategory", "order": "ASCENDING" },
+        { "fieldPath": "lastSeenAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "failurePatterns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "lastSeenAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "failurePatterns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "failureCategory", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "lastSeenAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "aiResolutions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "patternId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "aiResolutions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -16,6 +16,8 @@ export type AppErrorCode =
   | "AUTHENTICATION_ERROR"
   | "AUTHORIZATION_ERROR"
   | "RATE_LIMIT_ERROR"
+  | "NOT_FOUND_ERROR"
+  | "CONFLICT_ERROR"
   | "STORAGE_ERROR"
   | "DATABASE_ERROR"
   | "UNKNOWN_ERROR";
@@ -62,6 +64,12 @@ export type AuthorizationError = BaseAppError<"AUTHORIZATION_ERROR">;
 
 export type RateLimitError = BaseAppError<"RATE_LIMIT_ERROR", { retryAfterSeconds: number }>;
 
+/** A referenced resource (e.g. a `failurePatterns` doc) does not exist — no route needed this until Phase 6's resolve endpoint. */
+export type NotFoundError = BaseAppError<"NOT_FOUND_ERROR">;
+
+/** Another request is already acting on the same resource (e.g. an in-flight AI resolution claim) — see `lib/ai/resolveConversionFailure.ts`. */
+export type ConflictError = BaseAppError<"CONFLICT_ERROR">;
+
 export type StorageError = BaseAppError<"STORAGE_ERROR">;
 
 export type DatabaseError = BaseAppError<"DATABASE_ERROR">;
@@ -76,6 +84,8 @@ export type AppError =
   | AuthenticationError
   | AuthorizationError
   | RateLimitError
+  | NotFoundError
+  | ConflictError
   | StorageError
   | DatabaseError
   | UnknownError;
@@ -107,6 +117,8 @@ export const AppErrors = {
   authentication: makeError("AUTHENTICATION_ERROR"),
   authorization: makeError("AUTHORIZATION_ERROR"),
   rateLimit: makeError("RATE_LIMIT_ERROR"),
+  notFound: makeError("NOT_FOUND_ERROR"),
+  conflict: makeError("CONFLICT_ERROR"),
   storage: makeError("STORAGE_ERROR"),
   database: makeError("DATABASE_ERROR"),
   unknown: makeError("UNKNOWN_ERROR"),

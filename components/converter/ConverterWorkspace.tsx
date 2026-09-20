@@ -15,6 +15,7 @@ import { FeedbackForm } from "@/components/feedback/FeedbackForm";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useConversion } from "@/hooks/useConversion";
 import { useIssueLog } from "@/hooks/useIssueLog";
+import { useConversionFailureReporter } from "@/hooks/useConversionFailureReporter";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { SAMPLE_TEXT } from "@/features/converter/sampleText";
 import { downloadTextFile } from "@/lib/utils/download";
@@ -48,6 +49,7 @@ export function ConverterWorkspace() {
   const {
     inputText,
     setInputText,
+    convertedText,
     encodingChoice,
     setEncodingChoice,
     tier,
@@ -84,6 +86,11 @@ export function ConverterWorkspace() {
   useIssueLog(
     { source: "text", encodingId: resolvedEncodingId ?? null },
     { error: loggedError, validation: output?.validation ?? null },
+  );
+
+  useConversionFailureReporter(
+    { source: "text", encodingId: resolvedEncodingId ?? null, fullText: convertedText },
+    output,
   );
 
   /**

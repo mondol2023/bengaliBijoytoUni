@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { href: "/admin/users", label: "Users" },
   { href: "/admin/config", label: "Config" },
   { href: "/admin/errors", label: "Error log" },
+  { href: "/admin/conversion-failures", label: "Conversion failures" },
   { href: "/admin/feedback", label: "Feedback" },
   { href: "/admin/audit", label: "Audit log" },
 ];

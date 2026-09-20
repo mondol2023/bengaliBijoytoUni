@@ -20,6 +20,8 @@ export { AUTO_DETECT, type EncodingChoice };
 export interface UseConversionResult {
   inputText: string;
   setInputText: (text: string) => void;
+  /** The (debounced) text that actually produced `output` — not `inputText`, which can be ahead of it while typing. */
+  convertedText: string;
   encodingChoice: EncodingChoice;
   setEncodingChoice: (choice: EncodingChoice) => void;
   tier: TierId;
@@ -86,6 +88,7 @@ export function useConversion(initialTier: TierId = "easy"): UseConversionResult
   return {
     inputText,
     setInputText,
+    convertedText: debouncedText,
     encodingChoice,
     setEncodingChoice,
     tier,

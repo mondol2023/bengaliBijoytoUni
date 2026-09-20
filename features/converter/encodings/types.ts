@@ -31,6 +31,13 @@ export interface Token {
   reorder: ReorderKind;
   /** True when no rule matched and the character was passed through unchanged. */
   unmapped?: boolean;
+  /**
+   * Character offset of `legacy` in the original source text, assigned once
+   * by `tokenize` and carried through `postProcess`/`reorderTokens` (which
+   * only move/copy token objects, never rebuild them field-by-field) so a
+   * failure can still be located in the original input after reordering.
+   */
+  sourceIndex: number;
 }
 
 export interface EncodingDefinition {

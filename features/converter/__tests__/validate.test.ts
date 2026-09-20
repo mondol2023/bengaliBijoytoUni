@@ -8,16 +8,16 @@ import type { Token } from "../encodings/types";
 
 describe("validateTokens", () => {
   it("is valid when nothing is unmapped", () => {
-    const result = validateTokens([{ legacy: "K", unicode: "ক", reorder: "none" }]);
+    const result = validateTokens([{ legacy: "K", unicode: "ক", reorder: "none", sourceIndex: 0 }]);
     expect(result.valid).toBe(true);
     expect(result.warnings).toHaveLength(0);
   });
 
   it("reports unmapped sequences without duplicates", () => {
     const tokens: Token[] = [
-      { legacy: "@", unicode: "@", reorder: "none", unmapped: true },
-      { legacy: "@", unicode: "@", reorder: "none", unmapped: true },
-      { legacy: "#", unicode: "#", reorder: "none", unmapped: true },
+      { legacy: "@", unicode: "@", reorder: "none", unmapped: true, sourceIndex: 0 },
+      { legacy: "@", unicode: "@", reorder: "none", unmapped: true, sourceIndex: 1 },
+      { legacy: "#", unicode: "#", reorder: "none", unmapped: true, sourceIndex: 2 },
     ];
     const result = validateTokens(tokens);
     expect(result.valid).toBe(false);
@@ -30,13 +30,13 @@ describe("validateTokens", () => {
   // fixture — that is the whole point of `unmappedDetails`.
   it("reports each unmapped sequence with its count and surrounding text", () => {
     const tokens: Token[] = [
-      { legacy: "S", unicode: "জ", reorder: "none" },
-      { legacy: "¢", unicode: "ি", reorder: "none" },
-      { legacy: "j", unicode: "ম", reorder: "none" },
-      { legacy: "Ê", unicode: "Ê", reorder: "none", unmapped: true },
-      { legacy: "j", unicode: "ম", reorder: "none" },
-      { legacy: "¡", unicode: "া", reorder: "none" },
-      { legacy: "Ê", unicode: "Ê", reorder: "none", unmapped: true },
+      { legacy: "S", unicode: "জ", reorder: "none", sourceIndex: 0 },
+      { legacy: "¢", unicode: "ি", reorder: "none", sourceIndex: 1 },
+      { legacy: "j", unicode: "ম", reorder: "none", sourceIndex: 2 },
+      { legacy: "Ê", unicode: "Ê", reorder: "none", unmapped: true, sourceIndex: 3 },
+      { legacy: "j", unicode: "ম", reorder: "none", sourceIndex: 4 },
+      { legacy: "¡", unicode: "া", reorder: "none", sourceIndex: 5 },
+      { legacy: "Ê", unicode: "Ê", reorder: "none", unmapped: true, sourceIndex: 6 },
     ];
     const result = validateTokens(tokens);
 
@@ -49,13 +49,17 @@ describe("validateTokens", () => {
     // Bangla the user is looking at, with the offending byte bracketed.
     expect(detail.contexts[0]).toContain("⟦Ê⟧");
     expect(detail.contexts[0]).toContain("মা");
+    // Positions mirror the sampled contexts, taken from each token's
+    // original source-text offset rather than its (possibly reordered)
+    // array index.
+    expect(detail.positions).toEqual([3, 6]);
   });
 
   it("orders details by frequency, so the most damaging byte is first", () => {
     const tokens: Token[] = [
-      { legacy: "#", unicode: "#", reorder: "none", unmapped: true },
-      { legacy: "@", unicode: "@", reorder: "none", unmapped: true },
-      { legacy: "@", unicode: "@", reorder: "none", unmapped: true },
+      { legacy: "#", unicode: "#", reorder: "none", unmapped: true, sourceIndex: 0 },
+      { legacy: "@", unicode: "@", reorder: "none", unmapped: true, sourceIndex: 1 },
+      { legacy: "@", unicode: "@", reorder: "none", unmapped: true, sourceIndex: 2 },
     ];
     const result = validateTokens(tokens);
     expect(result.unmappedDetails.map((detail) => detail.sequence)).toEqual(["@", "#"]);
@@ -63,9 +67,9 @@ describe("validateTokens", () => {
 
   it("flattens details to prose for log rows, capped at the requested count", () => {
     const tokens: Token[] = [
-      { legacy: "@", unicode: "@", reorder: "none", unmapped: true },
-      { legacy: "#", unicode: "#", reorder: "none", unmapped: true },
-      { legacy: "$", unicode: "$", reorder: "none", unmapped: true },
+      { legacy: "@", unicode: "@", reorder: "none", unmapped: true, sourceIndex: 0 },
+      { legacy: "#", unicode: "#", reorder: "none", unmapped: true, sourceIndex: 1 },
+      { legacy: "$", unicode: "$", reorder: "none", unmapped: true, sourceIndex: 2 },
     ];
     const prose = formatUnmappedDetails(validateTokens(tokens).unmappedDetails, 2);
     const lines = prose.split("\n");

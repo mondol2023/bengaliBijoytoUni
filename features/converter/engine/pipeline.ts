@@ -3,13 +3,18 @@ import { getEncoding } from "../encodings/registry";
 import { tokenize } from "./tokenize";
 import { reorderTokens } from "./reorder";
 import { assembleText, normalizeText } from "./normalize";
-import { validateTokens, type ValidationResult } from "./validate";
+import { validateTokens, validateUnicodeOutput, type ValidationResult } from "./validate";
 import { detectEncoding } from "./detectEncoding";
+import { CONVERSION_ENGINE_VERSION, computeRulesHash } from "./version";
 
 export interface ConversionOutput {
   encodingId: string;
   unicodeText: string;
   validation: ValidationResult;
+  /** `CONVERSION_ENGINE_VERSION` at the time of this conversion. */
+  engineVersion: string;
+  /** Content fingerprint of the encoding's rule table used for this conversion. */
+  rulesHash: string;
 }
 
 /**
@@ -23,6 +28,14 @@ export function convertLegacyText(
   text: string,
   encodingId: string
 ): Result<ConversionOutput, AppError> {
+  if (typeof encodingId !== "string" || encodingId.length === 0) {
+    return err(
+      AppErrors.validation("Select a source encoding before converting.", {
+        details: { field: "encodingId" },
+      })
+    );
+  }
+
   const encoding = getEncoding(encodingId);
   if (!encoding) {
     return err(
@@ -39,9 +52,30 @@ export function convertLegacyText(
   tokens = reorderTokens(tokens);
 
   const unicodeText = normalizeText(assembleText(tokens));
-  const validation = validateTokens(tokens);
 
-  return ok({ encodingId: encoding.id, unicodeText, validation });
+  // Two independent checks, merged: `validateTokens` catches sequences the
+  // rule table never mapped, `validateUnicodeOutput` catches the final
+  // assembled text being malformed regardless of mapping (e.g. a reorder
+  // defect leaving a Bengali vowel sign with no base consonant). The output
+  // is always NFC-normalized above, so that half of `validateUnicodeOutput`
+  // never fires here — this only ever surfaces its reorder-defect check for
+  // this call site.
+  const tokenValidation = validateTokens(tokens);
+  const outputValidation = validateUnicodeOutput(unicodeText);
+  const validation: ValidationResult = {
+    valid: tokenValidation.valid && outputValidation.valid,
+    warnings: [...tokenValidation.warnings, ...outputValidation.warnings],
+    unmappedSequences: tokenValidation.unmappedSequences,
+    unmappedDetails: tokenValidation.unmappedDetails,
+  };
+
+  return ok({
+    encodingId: encoding.id,
+    unicodeText,
+    validation,
+    engineVersion: CONVERSION_ENGINE_VERSION,
+    rulesHash: computeRulesHash(encoding),
+  });
 }
 
 export interface DocumentConversionInput {
@@ -76,3 +110,6 @@ export { detectEncoding, normalizeText };
 export { validateUnicodeOutput, formatUnmappedDetail, formatUnmappedDetails } from "./validate";
 export type { ValidationResult, UnmappedDetail } from "./validate";
 export type { DetectionResult, EncodingScore } from "./detectEncoding";
+export { CONVERSION_ENGINE_VERSION, computeRulesHash } from "./version";
+export { FAILURE_CATEGORIES, classifyValidationWarning, classifyAppErrorCode } from "./classify";
+export type { FailureCategory } from "./classify";

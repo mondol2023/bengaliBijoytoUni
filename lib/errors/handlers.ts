@@ -40,6 +40,10 @@ export function statusForAppError(error: AppError): number {
       return 403;
     case "RATE_LIMIT_ERROR":
       return 429;
+    case "NOT_FOUND_ERROR":
+      return 404;
+    case "CONFLICT_ERROR":
+      return 409;
     case "FILE_PROCESSING_ERROR":
     case "CONVERSION_ERROR":
       return 422;

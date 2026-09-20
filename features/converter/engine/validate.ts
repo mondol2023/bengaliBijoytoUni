@@ -11,6 +11,13 @@ export interface UnmappedDetail {
    * with the unmapped sequence wrapped in ⟦⟧.
    */
   contexts: string[];
+  /**
+   * Character offsets in the original legacy source text for the same
+   * occurrences sampled into `contexts` (same order, same length) — each
+   * token's `sourceIndex`, captured at tokenize time so it stays correct
+   * even though this function runs on the post-reorder token array.
+   */
+  positions: number[];
 }
 
 export interface ValidationResult {
@@ -71,6 +78,7 @@ export function validateTokens(tokens: Token[]): ValidationResult {
     sequence,
     count: indices.length,
     contexts: indices.slice(0, MAX_CONTEXTS).map((index) => contextAround(tokens, index)),
+    positions: indices.slice(0, MAX_CONTEXTS).map((index) => tokens[index].sourceIndex),
   }));
 
   const unmappedSequences = unmappedDetails.map((detail) => detail.sequence);
