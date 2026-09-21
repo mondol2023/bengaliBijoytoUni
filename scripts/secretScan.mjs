@@ -44,27 +44,42 @@ const PATTERNS = [
 ];
 
 /**
- * Paths whose matches are known-benign and are asserted on elsewhere. Each
- * entry needs a reason, and the reason has to be that the value is not a
+ * Matches that are known-benign and are asserted on elsewhere. Each entry
+ * needs a reason, and the reason has to be that the value is not a
  * credential — not that it is inconvenient. Anything matching here is still
  * counted and reported, just not treated as a failure.
+ *
+ * An entry is a (path, pattern) pair, not a path. Exempting a whole file
+ * makes it a permanent blind spot: a real key pasted into it later would be
+ * reported as known-benign, by a scanner whose entire job is to notice that.
+ * Naming the pattern keeps the exemption to the one match that was actually
+ * examined.
  */
 const KNOWN_BENIGN = [
   {
     path: "app/api/admin/conversion-failures/[patternId]/resolve/route.test.ts",
+    pattern: "assigned-secret-literal",
     reason: "sentinel proving `debug` is stripped from responses",
   },
   {
     path: "app/api/admin/conversion-failures/[patternId]/review/route.test.ts",
+    pattern: "assigned-secret-literal",
     reason: "sentinel proving `debug` is stripped from responses",
   },
   {
     path: "lib/security/__tests__/envExample.test.ts",
+    pattern: "google-api-key",
     reason: "synthetic sequential-digit key proving Guard A can fail; not a credential",
   },
   {
     path: "lib/conversionFailures/limits.test.ts",
+    pattern: "assigned-secret-literal",
     reason: "fake document text proving the privacy bound truncates",
+  },
+  {
+    path: "docs/secret-hygiene.md",
+    pattern: "service-account-json",
+    reason: "the prose names the JSON key this pattern looks for; there is no value, here or in history",
   },
 ];
 
@@ -164,8 +179,11 @@ const tracked = scanTracked();
 const history = withHistory ? scanHistory() : { findings: [], scanned: 0 };
 const findings = [...tracked.findings, ...history.findings];
 
-const benignFor = (location) => KNOWN_BENIGN.find((entry) => location.includes(entry.path));
-const unexpected = findings.filter((finding) => !benignFor(finding.location));
+const benignFor = (finding) =>
+  KNOWN_BENIGN.find(
+    (entry) => finding.location.includes(entry.path) && finding.pattern === entry.pattern,
+  );
+const unexpected = findings.filter((finding) => !benignFor(finding));
 
 if (args.has("--json")) {
   console.log(
@@ -192,7 +210,7 @@ if (args.has("--json")) {
   );
   console.log(`${findings.length} match(es), ${unexpected.length} unexpected.\n`);
   for (const finding of findings) {
-    const benign = benignFor(finding.location);
+    const benign = benignFor(finding);
     const tag = benign ? `known-benign (${benign.reason})` : "UNEXPECTED";
     console.log(`  ${tag}\n    ${finding.location}:${finding.line}  ${finding.pattern}  length=${finding.matchLength}`);
   }

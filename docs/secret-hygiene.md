@@ -53,31 +53,54 @@ Binary extensions (images, fonts, archives, video, PDFs) are skipped.
 
 ## Allowlist
 
-Four locations match and are not credentials. Each is a fixture some test asserts on, so
-deleting one breaks that test rather than silently shrinking this list.
+Five matches are not credentials. An entry is a **(path, pattern) pair**, not a path:
+exempting a whole file would make it a permanent blind spot, and a real key pasted into it
+later would be reported as known-benign by the one tool whose job is to notice.
 
-| Location | Why it is benign |
-| --- | --- |
-| `app/api/admin/conversion-failures/[patternId]/resolve/route.test.ts` | sentinel string proving `debug` is stripped from the response |
-| `app/api/admin/conversion-failures/[patternId]/review/route.test.ts` | same sentinel, other route |
-| `lib/conversionFailures/limits.test.ts` | fake document text proving the privacy bound truncates |
-| `lib/security/__tests__/envExample.test.ts` | synthetic sequential-digit key proving Guard A can actually fail |
+| Location | Pattern | Why it is benign |
+| --- | --- | --- |
+| `app/api/admin/conversion-failures/[patternId]/resolve/route.test.ts` | `assigned-secret-literal` | sentinel string proving `debug` is stripped from the response |
+| `app/api/admin/conversion-failures/[patternId]/review/route.test.ts` | `assigned-secret-literal` | same sentinel, other route |
+| `lib/conversionFailures/limits.test.ts` | `assigned-secret-literal` | fake document text proving the privacy bound truncates |
+| `lib/security/__tests__/envExample.test.ts` | `google-api-key` | synthetic sequential-digit key proving Guard A can actually fail |
+| `docs/secret-hygiene.md` | `service-account-json` | this file's own prose, which names the JSON key that pattern looks for |
+
+The first four are fixtures some test asserts on, so deleting one breaks that test rather
+than silently shrinking this list. The fifth is this document matching the scanner it
+documents — a self-reference, added when the file was committed and caught by the next run
+rather than by review.
 
 Adding to this list requires the reason to be *the value is not a credential* — never *the
 finding is inconvenient*.
 
-## Findings, 2026-09-21
+## Findings
 
-Branch `feat/font-conversion-hardening`, at `53040b9`, 17 commits.
+### 2026-09-21, at `53040b9` (17 commits)
 
 ```
 Scanned 260 tracked file(s) and 392 history blob(s) against 10 patterns.
 8 match(es), 0 unexpected.
 ```
 
-Eight matches: the four allowlisted locations above, each appearing once in the working tree
-and once as a history blob. **No unexpected match anywhere, in the working tree or in any blob
+Eight matches: the four allowlisted locations then in the list, each appearing once in the
+working tree and once as a history blob.
+
+### 2026-09-21, re-run at `1c84583` (25 commits)
+
+```
+Scanned 295 tracked file(s) and 448 history blob(s) against 10 patterns.
+10 match(es), 0 unexpected.
+```
+
+Ten matches: the five allowlisted (path, pattern) pairs, each once in the working tree and
+once as a history blob. **No unexpected match anywhere, in the working tree or in any blob
 the repository has ever held.**
+
+The fifth pair appeared between the two runs, and it is this file: committing the sentence
+that names `"private_key":` put a match for the `service-account-json` pattern into the
+working tree and into history. The re-run reported it as UNEXPECTED and exited 1 — which is
+the scanner working. It was resolved by naming it in the allowlist, not by rewording the
+sentence, because the history blob would keep matching either way.
 
 ### `.env.local.example` specifically
 
