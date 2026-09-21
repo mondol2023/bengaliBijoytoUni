@@ -11,6 +11,7 @@ import type { ProviderId } from "./types";
  * lacks an API key (`provider_not_configured`).
  */
 export type ProviderErrorCode =
+  | "provider_disabled"
   | "provider_not_registered"
   | "provider_not_configured"
   | "provider_authentication_failed"
@@ -23,7 +24,7 @@ export type ProviderErrorCode =
 
 export interface ProviderError {
   readonly code: ProviderErrorCode;
-  /** Null only for `provider_not_registered`, where the id given isn't a real provider. */
+  /** Null for `provider_not_registered` and `provider_disabled`, neither of which is about one provider. */
   readonly provider: ProviderId | null;
   /** Safe to show an admin. Never contains an API key, header, or raw provider payload. */
   readonly message: string;
@@ -43,6 +44,19 @@ export function toSafeProviderError(error: ProviderError): Omit<ProviderError, "
 }
 
 export const ProviderErrors = {
+  /**
+   * The deployment-wide kill switch is off (`lib/ai/enabled.ts`). Distinct
+   * from `provider_not_configured`: that one means "this provider has no key",
+   * which an admin fixes by adding a key. This one means "no provider may be
+   * called here at all", which adding a key must never fix.
+   */
+  disabled(): ProviderError {
+    return {
+      code: "provider_disabled",
+      provider: null,
+      message: "AI resolution is disabled on this deployment.",
+    };
+  },
   notRegistered(id: string): ProviderError {
     return { code: "provider_not_registered", provider: null, message: `Unknown resolution provider "${id}".` };
   },

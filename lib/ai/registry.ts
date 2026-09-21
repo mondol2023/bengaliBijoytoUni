@@ -5,8 +5,16 @@
  * `providers/*.ts` directly. Unknown ids produce a controlled
  * `provider_not_registered` error — there is no silent fallback to a default
  * provider.
+ *
+ * This is also the enforcement point for the deployment-wide off-by-default
+ * switch (`./enabled.ts`). Because nothing outside this module imports
+ * `providers/*.ts`, a caller that cannot get a provider object from here
+ * cannot reach a provider at all — so the check belongs on the lookup rather
+ * than on each of the (currently one) call sites, which would have to
+ * remember it. `lib/ai/__tests__/callSites.test.ts` holds that property.
  */
 import { assertServerOnly } from "./assertServerOnly";
+import { isAiResolutionEnabled } from "./enabled";
 
 assertServerOnly("lib/ai/registry.ts");
 
@@ -34,6 +42,13 @@ export function listResolutionProviders(): ConversionResolutionProvider[] {
  * real provider missing its API key.
  */
 export function getResolutionProvider(id: string): ProviderResult<ConversionResolutionProvider> {
+  // Checked before the id is even validated: whether the switch is off is not
+  // a fact about which provider was asked for, and answering "unknown
+  // provider" first would let a caller probe the registry's contents on a
+  // deployment where the whole feature is meant to be unavailable.
+  if (!isAiResolutionEnabled()) {
+    return providerErr(ProviderErrors.disabled());
+  }
   if (!isProviderId(id)) {
     return providerErr(ProviderErrors.notRegistered(id));
   }

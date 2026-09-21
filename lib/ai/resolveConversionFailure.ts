@@ -89,6 +89,12 @@ function mapProviderErrorToAppError(error: ProviderError): AppError {
     case "provider_not_registered":
     case "provider_content_rejected":
       return AppErrors.validation(error.message);
+    // 404, not 500: the deployment-wide switch being off is a deliberate
+    // configuration, not a fault, and the endpoint genuinely offers nothing
+    // here. It also keeps a disabled deployment from confirming which
+    // providers exist, matching the check's placement in `registry.ts`.
+    case "provider_disabled":
+      return AppErrors.notFound(error.message);
     case "provider_not_configured":
     case "provider_authentication_failed":
     case "provider_timeout":

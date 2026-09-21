@@ -1,0 +1,261 @@
+/**
+ * Guard B: the reachability inventory for `lib/ai/*`.
+ *
+ * `security.test.ts` already proves a provider module throws if it is ever
+ * evaluated in a browser, and that no client-reachable file names an API key.
+ * This file answers the different question the reviewer actually asked: *from
+ * where, exactly, can a provider be reached at all* — and, in the other
+ * direction, that the deterministic conversion path cannot reach `lib/ai`
+ * from anywhere.
+ *
+ * Two deliberate differences from `security.test.ts`:
+ *
+ *  - It does not skip `app/api/**`. That file excludes any path containing
+ *    `/api/`, on the reasoning that server-only route handlers are allowed to
+ *    reach the registry. True for the registry, but it also means the
+ *    conversion *endpoints* were never checked, and those are exactly the
+ *    ones that must stay AI-free.
+ *  - The expected call sites are asserted as an exact set, not as an absence.
+ *    A prose list of call sites is stale the moment someone adds one; a set
+ *    equality fails on the commit that adds it and names the new file.
+ */
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AI_RESOLUTION_ENABLED_ENV } from "../enabled";
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
+
+/** Every shipped source file under `dir`; excludes tests, which may name anything. */
+function listShippedSources(dir: string): string[] {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === "node_modules" || entry.name === ".next" || entry.name === "__tests__") continue;
+      files.push(...listShippedSources(full));
+    } else if (SOURCE_EXTENSIONS.has(path.extname(entry.name)) && !entry.name.endsWith(".test.ts")) {
+      files.push(full);
+    }
+  }
+  return files;
+}
+
+/** Repo-relative, forward-slashed, so expectations read the same on Windows and CI. */
+function repoRelative(file: string): string {
+  return path.relative(REPO_ROOT, file).split(path.sep).join("/");
+}
+
+const ALL_SHIPPED_SOURCES = ["app", "components", "features", "hooks", "lib"].flatMap((dir) =>
+  listShippedSources(path.join(REPO_ROOT, dir)),
+);
+
+/** Strips comments first: a module that *explains* the boundary is not a caller of it. */
+function withoutComments(file: string): string {
+  return readFileSync(file, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+}
+
+function importersMatching(pattern: RegExp): string[] {
+  return ALL_SHIPPED_SOURCES.filter((file) => pattern.test(withoutComments(file)))
+    .map(repoRelative)
+    .sort();
+}
+
+describe("the scan sees the tree it claims to", () => {
+  it("collected a meaningful number of shipped sources", () => {
+    expect(ALL_SHIPPED_SOURCES.length).toBeGreaterThan(50);
+  });
+
+  it("collected the known endpoints of the chain it is about to assert", () => {
+    const relative = ALL_SHIPPED_SOURCES.map(repoRelative);
+    expect(relative).toContain("lib/ai/registry.ts");
+    expect(relative).toContain("lib/ai/providers/gemini.ts");
+    expect(relative).toContain("app/api/admin/conversion-failures/[patternId]/resolve/route.ts");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The inventory: every call site that can reach lib/ai/providers/*
+// ---------------------------------------------------------------------------
+
+/**
+ * The whole reachable chain, in one place:
+ *
+ *   app/api/admin/conversion-failures/[patternId]/resolve/route.ts  (admin-gated HTTP entry)
+ *     -> lib/ai/resolveConversionFailure.ts                         (the only service caller)
+ *       -> lib/ai/registry.ts                                       (the only provider importer; flag enforced here)
+ *         -> lib/ai/providers/{gemini,openai}.ts                    (the only modules holding a key)
+ *
+ * Each `it` below pins one link. Adding a second admin route, or importing a
+ * provider from somewhere new, fails the matching case by name.
+ */
+describe("Guard B: only one chain reaches a provider", () => {
+  it("has exactly one module importing lib/ai/providers/*", () => {
+    const pattern = /from\s+["'](?:@\/lib\/ai\/providers|\.{1,2}\/providers)\//;
+    expect(importersMatching(pattern)).toStrictEqual(["lib/ai/registry.ts"]);
+  });
+
+  it("has exactly one module importing the registry", () => {
+    const pattern = /from\s+["'](?:@\/lib\/ai\/registry|\.{1,2}\/registry)["']/;
+    expect(importersMatching(pattern)).toStrictEqual(["lib/ai/resolveConversionFailure.ts"]);
+  });
+
+  it("has exactly one route importing the resolution service", () => {
+    const pattern = /from\s+["'](?:@\/lib\/ai\/resolveConversionFailure|\.{1,2}\/resolveConversionFailure)["']/;
+    expect(importersMatching(pattern)).toStrictEqual([
+      "app/api/admin/conversion-failures/[patternId]/resolve/route.ts",
+    ]);
+  });
+
+  it("gates that one route behind requireAdminUser", () => {
+    const route = readFileSync(
+      path.join(REPO_ROOT, "app/api/admin/conversion-failures/[patternId]/resolve/route.ts"),
+      "utf8",
+    );
+    expect(route).toContain("requireAdminUser");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The other direction: the conversion path can never reach lib/ai
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything a character travels through on its way from legacy bytes to
+ * Unicode, including the API endpoints — not just `features/converter/engine`,
+ * which is all `security.test.ts` covered.
+ */
+const CONVERSION_PATH_ROOTS = [
+  "features/converter",
+  "features/documents",
+  "lib/conversionFailures",
+  "hooks/useConversion.ts",
+  "hooks/useDocumentConversion.ts",
+  "hooks/useConversionFailureReporter.ts",
+  "app/api/conversions",
+  "app/api/conversion-failures",
+  "app/api/documents",
+];
+
+describe("Guard B: the conversion path never imports lib/ai", () => {
+  it("resolves every declared conversion-path root", () => {
+    for (const root of CONVERSION_PATH_ROOTS) {
+      expect(() => statSync(path.join(REPO_ROOT, root)), `${root} does not exist`).not.toThrow();
+    }
+  });
+
+  const conversionPathFiles = CONVERSION_PATH_ROOTS.flatMap((root) => {
+    const full = path.join(REPO_ROOT, root);
+    let isDirectory = false;
+    try {
+      isDirectory = statSync(full).isDirectory();
+    } catch {
+      return [];
+    }
+    return isDirectory ? listShippedSources(full) : [full];
+  });
+
+  it("has conversion-path files to check", () => {
+    expect(conversionPathFiles.length).toBeGreaterThan(10);
+  });
+
+  it("finds no import of lib/ai from any of them", () => {
+    const offenders: string[] = [];
+    for (const file of conversionPathFiles) {
+      const contents = withoutComments(file);
+      if (/from\s+["'][^"']*lib\/ai/.test(contents)) offenders.push(repoRelative(file));
+      // A dynamic import is reachability too, and matches none of the patterns above.
+      if (/import\(\s*["'][^"']*lib\/ai/.test(contents)) offenders.push(`${repoRelative(file)} (dynamic)`);
+    }
+    expect(offenders, "conversion must stay deterministic and free of any AI dependency").toStrictEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The flag, end to end against a mocked provider
+// ---------------------------------------------------------------------------
+
+/**
+ * `registry.test.ts` proves the lookup refuses. This proves the thing that
+ * actually costs money: with the flag off, no HTTP request leaves the
+ * process. `fetch` is mocked rather than a provider module, so an adapter
+ * that someday bypasses the registry would still be caught here.
+ */
+describe("Guard B: the flag stops the outbound call, not just the lookup", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("issues no fetch when the flag is off, even with both API keys present", async () => {
+    vi.stubEnv(AI_RESOLUTION_ENABLED_ENV, undefined);
+    vi.stubEnv("GEMINI_API_KEY", "test-key-not-a-real-credential");
+    vi.stubEnv("OPENAI_API_KEY", "test-key-not-a-real-credential");
+
+    const fetchMock = vi.fn().mockRejectedValue(new Error("no outbound call may happen with the flag off"));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    vi.resetModules();
+    const { getResolutionProvider } = await import("../registry");
+    const result = getResolutionProvider("gemini");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("provider_disabled");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reaches the mocked provider once the flag is on, proving the case above is not vacuous", async () => {
+    vi.stubEnv(AI_RESOLUTION_ENABLED_ENV, "true");
+    vi.stubEnv("GEMINI_API_KEY", "test-key-not-a-real-credential");
+
+    const providerJson = JSON.stringify({
+      candidateConversion: "আ",
+      alternatives: [],
+      confidence: "high",
+      isCertain: true,
+      explanation: "ok",
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => providerJson,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: providerJson }] } }] }),
+    } as Response);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    vi.resetModules();
+    const { getResolutionProvider } = await import("../registry");
+    const lookup = getResolutionProvider("gemini");
+    expect(lookup.ok).toBe(true);
+    if (!lookup.ok) return;
+
+    await lookup.value.resolve({
+      failurePatternId: "pattern-1",
+      encodingId: "bijoy",
+      failedSequence: "Av",
+      codePoints: [65, 118],
+      contextBefore: "",
+      contextAfter: "",
+      fullText: "",
+      position: 0,
+      currentEngineOutput: "",
+      failureCategory: "unmapped_character",
+      engineVersion: "engine-1.2.3",
+      rulesHash: "rules-abc",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
