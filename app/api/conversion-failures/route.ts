@@ -8,6 +8,7 @@ import { FAILURE_CATEGORIES } from "@/features/converter/engine/classify";
 import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
 import { failResponder, toAppError } from "@/lib/errors/handlers";
 import { AppErrors } from "@/lib/errors/types";
+import { fileExtensionOnly } from "@/lib/privacy/fileName";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,13 @@ const occurrenceSchema = z.object({
   errorCode: z.string().min(1).max(64),
   errorReason: z.string().min(1).max(CONVERSION_FAILURE_LIMITS.maxErrorReasonLength),
   severity: z.enum(["error", "warning"]),
+  /**
+   * Accepted but not stored as sent. The current bundle already reduces this
+   * to an extension before posting; re-applying the reduction here covers a
+   * stale tab running the previous bundle and a caller that is not our
+   * client at all. Validation stays permissive (a whole name still parses)
+   * so an old tab gets a 200 rather than a rejection.
+   */
   fileName: z.string().max(256).nullable().optional(),
   fileType: z.string().max(32).nullable().optional(),
 });
@@ -127,7 +135,7 @@ export async function POST(request: NextRequest) {
         errorCode: item.errorCode,
         errorReason: item.errorReason,
         severity: item.severity,
-        fileName: item.fileName ?? null,
+        fileName: fileExtensionOnly(item.fileName),
         fileType: item.fileType ?? null,
         route: null,
       })),

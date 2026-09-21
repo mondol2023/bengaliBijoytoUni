@@ -17,6 +17,7 @@
 import { getAdminDb } from "./admin";
 import { errorLogSchema, type ErrorLog } from "./schemas";
 import { logAppError } from "@/lib/errors/handlers";
+import { fileExtensionOnly } from "@/lib/privacy/fileName";
 
 const COLLECTION = "errorLogs";
 
@@ -42,6 +43,11 @@ export async function writeErrorLog(input: ErrorLogInput): Promise<string> {
   const record: ErrorLog = {
     ...input,
     message: input.message.slice(0, ERROR_LOG_LIMITS.maxMessageLength),
+    // A file name is user content; only its extension is kept. Applied here
+    // rather than at the two call sites (`/api/error-logs` from the browser,
+    // `captureServerIssue` from `/api/documents/extract`) so no future writer
+    // can reintroduce the name — see `lib/privacy/fileName.ts`.
+    fileName: fileExtensionOnly(input.fileName),
     samples: clampSamples(input.samples ?? []),
     occurrences: input.occurrences ?? 1,
     createdAt: new Date().toISOString(),

@@ -90,7 +90,7 @@ context across users.
 | `errorCode` | `string` | e.g. an `AppErrorCode`, or a pipeline-internal code for warnings that aren't `AppError`s. |
 | `errorReason` | `string` | Human-readable. |
 | `severity` | `"error" \| "warning"` | Matches existing severity concept. |
-| `fileName` / `fileType` | `string \| null` | Present for `source: "file"`. |
+| `fileName` / `fileType` | `string \| null` | Present for `source: "file"`. `fileName` holds the **extension only** (`".docx"`) — a name is user content and nothing downstream read it. Reduced in `lib/privacy/fileName.ts`. Rows written before that change still hold whole names. |
 | `route` | `string \| null` | API route, for server-captured failures. |
 | `patternId` | `string` | FK into `failurePatterns` (see below). |
 | `createdAt` | `string` (ISO) | Matches this codebase's "ISO string, not `Timestamp`" convention. |
@@ -235,9 +235,17 @@ both rather than adding a third path:
 Both paths build their payload with `buildFailureOccurrence()` from
 `lib/conversionFailures/occurrence.ts`. That function reads the source text only to slice
 the context window; the text itself never enters the returned object, so neither path can
-persist a whole document even by accident. Regression coverage:
-`lib/conversionFailures/limits.test.ts` (builder) and
+persist a whole document even by accident. It applies the same reasoning to the uploaded
+file's name, reducing it to an extension through `lib/privacy/fileName.ts`. Regression
+coverage: `lib/conversionFailures/limits.test.ts` and
+`lib/conversionFailures/__tests__/occurrenceFileName.test.ts` (builder),
 `app/api/conversion-failures/route.test.ts` (route).
+
+The `errorLogs` collection is written from the same upload and carried the same name, so
+`writeErrorLog` reduces it too (`lib/firebase/__tests__/errorLog.test.ts`). The one place
+a real file name is still stored is `recordDocumentUpload` — a signed-in user's own
+document history, where the name is the point, disclosed separately and removable with the
+delete control.
 
 In both cases, persistence is **best-effort and asynchronous relative to the conversion
 result**: a Firestore outage never blocks or corrupts the conversion the user is looking at.

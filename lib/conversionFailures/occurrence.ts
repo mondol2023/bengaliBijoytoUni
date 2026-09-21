@@ -10,11 +10,14 @@
  * the original text either side of it, and nothing else derived from the
  * user's content. The complete input (`fullText`) and the complete converted
  * output (`engineOutput`) are deliberately NOT collected — see
- * `docs/conversion-failure-pipeline.md` §6.
+ * `docs/conversion-failure-pipeline.md` §6. A file name is user content under
+ * the same reasoning and is reduced to its extension here
+ * (`lib/privacy/fileName.ts`), so neither reporter can send one.
  *
  * Client-bundled, so like `./limits.ts` this module must never import
  * `firebase-admin` or anything that reaches it.
  */
+import { fileExtensionOnly } from "@/lib/privacy/fileName";
 import type { UnmappedDetail } from "@/features/converter/engine/validate";
 import type { SourceSignal } from "@/features/converter/engine/normalizeSource";
 
@@ -33,6 +36,11 @@ export interface FailureOccurrenceMeta {
   encodingId: string | null;
   engineVersion: string;
   rulesHash: string | null;
+  /**
+   * The real file name, as the caller has it. It is **not** stored: the
+   * builder reduces it to an extension. Callers pass the name they already
+   * hold rather than pre-truncating it, so the bound lives in one place.
+   */
   fileName?: string | null;
   fileType?: string | null;
 }
@@ -56,6 +64,12 @@ export interface BuiltFailureOccurrence {
   errorCode: "UNMAPPED_CHARACTER" | "AMBIGUOUS_TYPOGRAPHY";
   errorReason: string;
   severity: "warning";
+  /**
+   * The upload's extension (`".docx"`), never its name, and null when the
+   * source was pasted text or the name had no usable extension. Kept because
+   * "which formats fail" is a real diagnostic question; the name answered
+   * none.
+   */
   fileName: string | null;
   fileType: string | null;
 }
@@ -100,7 +114,7 @@ function buildOccurrence(
     errorCode: part.errorCode,
     errorReason: part.errorReason,
     severity: "warning",
-    fileName: meta.fileName ?? null,
+    fileName: fileExtensionOnly(meta.fileName),
     fileType: meta.fileType ?? null,
   };
 }

@@ -169,4 +169,22 @@ describe("POST /api/conversion-failures: batched counts", () => {
     expect(response.status).toBe(400);
     expect(recordConversionFailures).not.toHaveBeenCalled();
   });
+
+  /**
+   * The builder already reduces the name before the request is made, so this
+   * covers the two cases the builder cannot: a tab still running the previous
+   * bundle, and a caller that is not our client.
+   */
+  it("reduces a file name a caller sent anyway to its extension", async () => {
+    const response = await POST(
+      makeRequest({
+        failures: [{ ...occurrence, source: "file", fileName: "q3-layoffs-draft.docx", fileType: "docx" }],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const [recorded] = vi.mocked(recordConversionFailures).mock.calls[0][0];
+    expect(recorded.fileName).toBe(".docx");
+    expect(JSON.stringify(recorded)).not.toContain("q3-layoffs-draft");
+  });
 });
