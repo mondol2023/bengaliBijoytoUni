@@ -13,6 +13,7 @@ export const CATEGORY_LABELS: Record<FailureCategory, string> = {
   invalid_encoding: "Invalid encoding",
   reorder_defect: "Reorder defect",
   normalization_warning: "Normalization warning",
+  ambiguous_typography: "Ambiguous typography",
   conversion_exception: "Conversion exception",
   document_extraction_failure: "Document extraction failure",
   unknown: "Unknown",

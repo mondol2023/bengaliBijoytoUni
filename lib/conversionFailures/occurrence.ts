@@ -16,6 +16,7 @@
  * `firebase-admin` or anything that reaches it.
  */
 import type { UnmappedDetail } from "@/features/converter/engine/validate";
+import type { SourceSignal } from "@/features/converter/engine/normalizeSource";
 
 /**
  * Characters of the original input kept either side of a failed sequence.
@@ -41,7 +42,7 @@ export interface BuiltFailureOccurrence {
   encodingId: string | null;
   engineVersion: string;
   rulesHash: string | null;
-  failureCategory: "unmapped_character";
+  failureCategory: "unmapped_character" | "ambiguous_typography";
   failedSequence: string;
   position: number | null;
   contextBefore: string;
@@ -52,7 +53,7 @@ export interface BuiltFailureOccurrence {
    * report populates it.
    */
   engineOutput: null;
-  errorCode: "UNMAPPED_CHARACTER";
+  errorCode: "UNMAPPED_CHARACTER" | "AMBIGUOUS_TYPOGRAPHY";
   errorReason: string;
   severity: "warning";
   fileName: string | null;
@@ -63,20 +64,26 @@ export interface BuiltFailureOccurrence {
  * `sourceText` is read to slice the context window and is never copied into
  * the result — it stays in the caller's memory and never crosses the wire.
  */
-export function buildFailureOccurrence(
+function buildOccurrence(
   meta: FailureOccurrenceMeta,
   sourceText: string,
-  detail: UnmappedDetail,
+  part: {
+    sequence: string;
+    positions: number[];
+    failureCategory: BuiltFailureOccurrence["failureCategory"];
+    errorCode: BuiltFailureOccurrence["errorCode"];
+    errorReason: string;
+  },
 ): BuiltFailureOccurrence {
-  const position = detail.positions[0] ?? null;
+  const position = part.positions[0] ?? null;
   const contextBefore =
     position === null ? "" : sourceText.slice(Math.max(0, position - CONTEXT_WINDOW_CHARS), position);
   const contextAfter =
     position === null
       ? ""
       : sourceText.slice(
-          position + detail.sequence.length,
-          position + detail.sequence.length + CONTEXT_WINDOW_CHARS,
+          position + part.sequence.length,
+          position + part.sequence.length + CONTEXT_WINDOW_CHARS,
         );
 
   return {
@@ -84,16 +91,49 @@ export function buildFailureOccurrence(
     encodingId: meta.encodingId,
     engineVersion: meta.engineVersion,
     rulesHash: meta.rulesHash,
-    failureCategory: "unmapped_character",
-    failedSequence: detail.sequence,
+    failureCategory: part.failureCategory,
+    failedSequence: part.sequence,
     position,
     contextBefore,
     contextAfter,
     engineOutput: null,
-    errorCode: "UNMAPPED_CHARACTER",
-    errorReason: `"${detail.sequence}" occurred ${detail.count} time(s) with no mapping rule in this encoding.`,
+    errorCode: part.errorCode,
+    errorReason: part.errorReason,
     severity: "warning",
     fileName: meta.fileName ?? null,
     fileType: meta.fileType ?? null,
   };
+}
+
+/**
+ * An ambiguous source character `normalizeSource` flagged and deliberately
+ * left unchanged, recorded as a reviewable pattern. Same privacy bound as an
+ * unmapped character: the byte plus a bounded window, nothing else.
+ */
+export function buildSignalOccurrence(
+  meta: FailureOccurrenceMeta,
+  sourceText: string,
+  signal: SourceSignal,
+): BuiltFailureOccurrence {
+  return buildOccurrence(meta, sourceText, {
+    sequence: signal.sequence,
+    positions: signal.positions,
+    failureCategory: "ambiguous_typography",
+    errorCode: "AMBIGUOUS_TYPOGRAPHY",
+    errorReason: signal.message,
+  });
+}
+
+export function buildFailureOccurrence(
+  meta: FailureOccurrenceMeta,
+  sourceText: string,
+  detail: UnmappedDetail,
+): BuiltFailureOccurrence {
+  return buildOccurrence(meta, sourceText, {
+    sequence: detail.sequence,
+    positions: detail.positions,
+    failureCategory: "unmapped_character",
+    errorCode: "UNMAPPED_CHARACTER",
+    errorReason: `"${detail.sequence}" occurred ${detail.count} time(s) with no mapping rule in this encoding.`,
+  });
 }

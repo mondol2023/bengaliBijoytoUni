@@ -3,6 +3,7 @@ import { getEncoding } from "../encodings/registry";
 import { tokenize } from "./tokenize";
 import { hasDanglingPreBaseVowel, reorderTokens } from "./reorder";
 import { assembleText, normalizeText, stripBom } from "./normalize";
+import { normalizeSource } from "./normalizeSource";
 import {
   ALREADY_UNICODE_MESSAGE,
   detectAlreadyUnicode,
@@ -62,8 +63,10 @@ export function convertLegacyText(
   }
 
   // Source hygiene runs before tokenizing so the rest of the pipeline, and
-  // every offset it produces, sees one canonical input.
-  const sourceText = stripBom(text);
+  // every offset it produces, sees one canonical input. It removes only what
+  // cannot be legitimate legacy data (the BOM) and flags the rest — see
+  // `normalizeSource`.
+  const { text: sourceText, signals: sourceSignals } = normalizeSource(text, encoding);
 
   let tokens = tokenize(sourceText, encoding);
   if (encoding.postProcess) {
@@ -87,10 +90,17 @@ export function convertLegacyText(
   const outputValidation = validateUnicodeOutput(unicodeText, { incompleteCluster });
   const validation: ValidationResult = {
     valid: tokenValidation.valid && outputValidation.valid,
-    warnings: [...tokenValidation.warnings, ...outputValidation.warnings],
+    warnings: [
+      ...tokenValidation.warnings,
+      ...outputValidation.warnings,
+      ...sourceSignals.map((signal) => signal.message),
+    ],
     unmappedSequences: tokenValidation.unmappedSequences,
     unmappedDetails: tokenValidation.unmappedDetails,
     alreadyUnicode: false,
+    // Advisory only: an ambiguous byte still converted, so it does not make
+    // the result invalid. It is surfaced and recorded for review.
+    sourceSignals,
   };
 
   // E4. Text that is already Unicode Bengali matches no rule in a CP1252
@@ -111,6 +121,7 @@ export function convertLegacyText(
         unmappedSequences: [],
         unmappedDetails: [],
         alreadyUnicode: true,
+        sourceSignals: [],
       },
       engineVersion: CONVERSION_ENGINE_VERSION,
       rulesHash: computeRulesHash(encoding),
@@ -157,6 +168,8 @@ export function convertDocument(
 
 export { detectEncoding, normalizeText, stripBom };
 export { detectAlreadyUnicode, ALREADY_UNICODE_MESSAGE } from "./validate";
+export { normalizeSource } from "./normalizeSource";
+export type { SourceSignal, NormalizedSource } from "./normalizeSource";
 export { validateUnicodeOutput, formatUnmappedDetail, formatUnmappedDetails } from "./validate";
 export type { ValidationResult, UnmappedDetail } from "./validate";
 export type { DetectionResult, EncodingScore } from "./detectEncoding";

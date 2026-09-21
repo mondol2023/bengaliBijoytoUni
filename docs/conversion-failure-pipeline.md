@@ -143,6 +143,57 @@ version. Adds:
 - The Bengali dependent-vowel-without-base-consonant heuristic in `validateUnicodeOutput` →
   `reorder_defect`
 - NFC-normalization mismatch → `normalization_warning`
+- A Latin-typography byte that is also a real conjunct in the active table, in mixed
+  Unicode/legacy input → `ambiguous_typography` (Phase 2, see below)
+
+### 5.1 Source hygiene and the flag-don't-strip rule (Phase 2)
+
+`engine/normalizeSource.ts` is the single pass over the *input*, run before tokenizing so
+the engine, the offsets it reports, and the signals an admin reviews all come from one
+place. Two rules govern it:
+
+1. **Transform only what cannot be legitimate legacy data.** The BOM qualifies: U+FEFF is
+   not a CP1252 code point and appears in zero rules across all three encodings, so it can
+   only be transport noise. Almost nothing else qualifies.
+2. **Otherwise flag, never change.** These tables address CP1252 bytes, and several of
+   those bytes are Latin typography characters carrying real conjuncts:
+
+   | byte | Bijoy meaning |
+   |---|---|
+   | U+2019 `'` | `্থ` (also ন্থ, ন্থ্র, স্থ) |
+   | U+00AD soft hyphen | `্ল` (also গ্ল, প্ল, ব্ল, ল্ল, শ্ল, স্প্ল) |
+   | U+201C `"` | `ু` (also রু) |
+   | U+201D `"` | চ্চ, চ্ছ, চ্ছ্ব, চ্ছ্র, চ্ঞ, চ্ব |
+
+   A "smart quotes" or "strip soft hyphens" cleanup — the kind most text pipelines apply by
+   reflex — would silently destroy every স্থ and every ল-fola in the document. Note also
+   that U+201C/U+201D are **not** a quote pair here: they are unrelated CP1252 0x93/0x94
+   bytes, so their asymmetry is correct, not a defect.
+
+A flag is raised only where the ambiguity is real: the input must mix already-converted
+Unicode with legacy bytes. In a pure legacy document U+2019 is unambiguously ্থ, and
+flagging it there would fire on virtually every real document — recreating exactly the
+noise problem §5.2 removed. Signals are advisory: they never make a conversion invalid,
+and the byte still converts to its conjunct.
+
+**Not yet possible:** using font or per-run information to disambiguate. No extractor
+exposes it — `features/documents/extract/types.ts` carries only `text`, `fileName`,
+`fileType`, `pageCount` and `notes`. That would need extractor work first.
+
+### 5.2 Noise the pipeline deliberately no longer records (Phase 2)
+
+Three classes of report were unactionable by construction and are now suppressed at
+source, so `failurePatterns` reflects real mapping gaps:
+
+- **Already-Unicode input.** Legacy text is CP1252, so the tables contain no Bengali-block
+  characters; pasting converted text made every Bengali letter an "unmapped character" —
+  ~18 pattern rows from one short sentence. `detectAlreadyUnicode` now reports it as a
+  no-op with one message.
+- **Unfinished clusters.** The converter runs per debounced keystroke, so typing `wK` (কি)
+  passes through `w` — a pre-base vowel with no consonant yet — which read as a reorder
+  defect. `hasDanglingPreBaseVowel` exempts only that trailing run.
+- **ZWJ/ZWNJ.** Not legacy bytes in any table, so they reported as unmapped — including
+  the U+200C this converter emits itself for the visible hasant. Now passed through.
 - A thrown/`AppError` `CONVERSION_ERROR` → `conversion_exception`
 - `AppError` `FILE_PROCESSING_ERROR` → `document_extraction_failure`
 - Anything else → `unknown`

@@ -11,6 +11,7 @@ export const FAILURE_CATEGORIES = [
   "invalid_encoding",
   "reorder_defect",
   "normalization_warning",
+  "ambiguous_typography",
   "conversion_exception",
   "document_extraction_failure",
   "unknown",
@@ -28,6 +29,7 @@ export function classifyValidationWarning(message: string): FailureCategory {
   if (message.includes("no mapping rule")) return "unmapped_character";
   if (message.includes("reorder defect")) return "reorder_defect";
   if (message.includes("Normalization Form C")) return "normalization_warning";
+  if (message.includes("is both Latin punctuation and a legacy byte")) return "ambiguous_typography";
   return "unknown";
 }
 

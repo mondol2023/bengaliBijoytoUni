@@ -1,4 +1,5 @@
 import type { Token } from "../encodings/types";
+import type { SourceSignal } from "./normalizeSource";
 
 /** One unmapped legacy sequence, with enough context to act on it. */
 export interface UnmappedDetail {
@@ -30,6 +31,11 @@ export interface ValidationResult {
    * nothing to convert. Not a failure: see `detectAlreadyUnicode`.
    */
   alreadyUnicode: boolean;
+  /**
+   * Ambiguous source characters `normalizeSource` flagged and deliberately
+   * did not change. Advisory: they do not make the conversion invalid.
+   */
+  sourceSignals: SourceSignal[];
 }
 
 /** The Bengali Unicode block. Legacy CP1252 source text contains none of it. */
@@ -151,6 +157,7 @@ export function validateTokens(tokens: Token[]): ValidationResult {
     unmappedSequences,
     unmappedDetails,
     alreadyUnicode: false,
+    sourceSignals: [],
   };
 }
 
@@ -225,5 +232,6 @@ export function validateUnicodeOutput(
     unmappedSequences: [],
     unmappedDetails: [],
     alreadyUnicode: false,
+    sourceSignals: [],
   };
 }

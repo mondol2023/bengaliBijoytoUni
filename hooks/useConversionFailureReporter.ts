@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { buildFailureOccurrence } from "@/lib/conversionFailures/occurrence";
+import { buildFailureOccurrence, buildSignalOccurrence } from "@/lib/conversionFailures/occurrence";
 import type { ConversionOutput } from "@/features/converter/engine/pipeline";
 
 export interface ConversionFailureReportContext {
@@ -28,13 +28,15 @@ function patternKey(encodingId: string | null, engineVersion: string, sequence: 
  * rather than the raw input, because source hygiene can shift the offsets
  * the validation reports (see `ConversionOutput.sourceText`).
  *
- * Scoped to `unmapped_character` failures only: those are the ones with a
- * clear failed sequence and position a human can act on to fix a mapping
- * table. Whole-output warnings from `validateUnicodeOutput` (reorder
- * defects, NFC mismatches) describe a property of the entire result rather
- * than one legacy sequence, so they don't fit this pattern-keyed model
- * without inventing an identifier for them — they continue to surface only
- * through the existing `errorLogs` feed via `useIssueLog`.
+ * Scoped to the two failures that have a clear sequence and position a
+ * human can act on: `unmapped_character` (no rule matched) and
+ * `ambiguous_typography` (a byte that is both Latin punctuation and a real
+ * conjunct, flagged but deliberately not changed — see `normalizeSource`).
+ * Whole-output warnings from `validateUnicodeOutput` (reorder defects, NFC
+ * mismatches) describe a property of the entire result rather than one
+ * legacy sequence, so they don't fit this pattern-keyed model without
+ * inventing an identifier for them — they continue to surface only through
+ * the existing `errorLogs` feed via `useIssueLog`.
  *
  * Reports at most once per distinct `(encodingId, engineVersion, sequence)`
  * pattern per mount (cost control, mirrors `reportIssue.ts`'s "only the
@@ -50,31 +52,42 @@ export function useConversionFailureReporter(
   const reportedPatterns = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!output || output.validation.unmappedDetails.length === 0) return;
+    if (!output) return;
+    const { unmappedDetails, sourceSignals } = output.validation;
+    if (unmappedDetails.length === 0 && sourceSignals.length === 0) return;
 
-    const unseen = output.validation.unmappedDetails.filter(
-      (detail) => !reportedPatterns.current.has(patternKey(context.encodingId, output.engineVersion, detail.sequence)),
-    );
-    if (unseen.length === 0) return;
-    for (const detail of unseen) {
-      reportedPatterns.current.add(patternKey(context.encodingId, output.engineVersion, detail.sequence));
-    }
+    const meta = {
+      source: context.source,
+      encodingId: context.encodingId,
+      engineVersion: output.engineVersion,
+      rulesHash: output.rulesHash,
+      fileName: context.fileName,
+      fileType: context.fileType,
+    };
 
-    const failures = unseen.map((detail) => ({
-      ...buildFailureOccurrence(
-        {
-          source: context.source,
-          encodingId: context.encodingId,
-          engineVersion: output.engineVersion,
-          rulesHash: output.rulesHash,
-          fileName: context.fileName,
-          fileType: context.fileType,
-        },
-        output.sourceText,
-        detail,
-      ),
-      sessionId,
-    }));
+    // The per-mount dedup key spans both kinds, so an ambiguous byte and an
+    // unmapped byte with the same sequence are still reported separately.
+    const isUnseen = (kind: string, sequence: string) =>
+      !reportedPatterns.current.has(patternKey(context.encodingId, output.engineVersion, `${kind}:${sequence}`));
+    const markSeen = (kind: string, sequence: string) =>
+      reportedPatterns.current.add(patternKey(context.encodingId, output.engineVersion, `${kind}:${sequence}`));
+
+    const failures = [
+      ...unmappedDetails
+        .filter((detail) => isUnseen("unmapped", detail.sequence))
+        .map((detail) => {
+          markSeen("unmapped", detail.sequence);
+          return buildFailureOccurrence(meta, output.sourceText, detail);
+        }),
+      ...sourceSignals
+        .filter((signal) => isUnseen("ambiguous", signal.sequence))
+        .map((signal) => {
+          markSeen("ambiguous", signal.sequence);
+          return buildSignalOccurrence(meta, output.sourceText, signal);
+        }),
+    ].map((occurrence) => ({ ...occurrence, sessionId }));
+
+    if (failures.length === 0) return;
 
     void (async () => {
       try {

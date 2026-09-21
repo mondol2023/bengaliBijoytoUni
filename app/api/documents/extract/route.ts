@@ -17,7 +17,7 @@ import { resolveServerLimits } from "@/lib/auth/tier";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { captureServerIssue } from "@/lib/firebase/errorLog";
 import { captureConversionFailures } from "@/lib/firebase/conversionFailures";
-import { buildFailureOccurrence } from "@/lib/conversionFailures/occurrence";
+import { buildFailureOccurrence, buildSignalOccurrence } from "@/lib/conversionFailures/occurrence";
 import type { ErrorLog } from "@/lib/firebase/schemas";
 import { recordConversion, recordDocumentUpload } from "@/lib/firebase/recordActivity";
 import { getSystemConfigSafe } from "@/lib/firebase/systemConfig";
@@ -221,28 +221,37 @@ export async function POST(request: NextRequest) {
       fileType,
       samples: validation.unmappedSequences,
     });
+  }
 
-    // The deeper, admin-only dataset (docs/conversion-failure-pipeline.md).
-    // `text` is read only to slice each failed sequence's context window
-    // (`buildFailureOccurrence` enforces that bound); the extracted document
-    // itself is never persisted here.
-    // Awaited like every other write on this path, for the same
-    // serverless-freeze reason `capture()`'s doc comment explains.
+  // The deeper, admin-only dataset (docs/conversion-failure-pipeline.md).
+  // Its own condition rather than nested in the one above: an ambiguous
+  // typography byte converted successfully and produces no unmapped
+  // sequence, but is exactly the kind of case an admin should review.
+  //
+  // `sourceText` is read only to slice each sequence's context window (the
+  // occurrence builders enforce that bound); the extracted document itself
+  // is never persisted here. Awaited like every other write on this path,
+  // for the same serverless-freeze reason `capture()`'s doc comment gives.
+  if (validation.unmappedDetails.length > 0 || validation.sourceSignals.length > 0) {
     const sessionId = randomUUID();
+    const failureMeta = {
+      source: "file" as const,
+      encodingId: conversion.value.encodingId,
+      engineVersion: conversion.value.engineVersion,
+      rulesHash: conversion.value.rulesHash,
+      fileName: file.name,
+      fileType,
+    };
     await captureConversionFailures(
-      validation.unmappedDetails.map((detail) => ({
-        ...buildFailureOccurrence(
-          {
-            source: "file",
-            encodingId: conversion.value.encodingId,
-            engineVersion: conversion.value.engineVersion,
-            rulesHash: conversion.value.rulesHash,
-            fileName: file.name,
-            fileType,
-          },
-          conversion.value.sourceText,
-          detail,
+      [
+        ...validation.unmappedDetails.map((detail) =>
+          buildFailureOccurrence(failureMeta, conversion.value.sourceText, detail),
         ),
+        ...validation.sourceSignals.map((signal) =>
+          buildSignalOccurrence(failureMeta, conversion.value.sourceText, signal),
+        ),
+      ].map((occurrence) => ({
+        ...occurrence,
         userId: user?.uid ?? null,
         sessionId,
         route: "api/documents/extract",

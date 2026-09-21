@@ -11,6 +11,7 @@ function validation(overrides: Partial<ValidationResult> = {}): ValidationResult
     unmappedSequences: [],
     unmappedDetails: [],
     alreadyUnicode: false,
+    sourceSignals: [],
     ...overrides,
   };
 }
