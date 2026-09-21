@@ -44,6 +44,33 @@ function rephInsertIndex(output: Token[]): number {
 }
 
 /**
+ * True when the stream ends with a pre-base vowel sign that has no consonant
+ * to attach to — the `pendingBeforeConsonant` leftover that `reorderTokens`
+ * appends at the end of its final branch.
+ *
+ * That is not a defect, it is an unfinished cluster. The converter runs on
+ * every debounced keystroke, so typing "wK" (কি) passes through the
+ * intermediate state "w", whose output is a bare ি. `validateUnicodeOutput`
+ * reads that as "a vowel sign with no preceding base consonant — likely a
+ * reorder defect" and the UI flashed a defect warning mid-word, while
+ * `useIssueLog` filed a `validation_warning` row for a conversion that was
+ * about to become correct one keystroke later.
+ *
+ * Kept next to `reorderTokens` because it restates that function's release
+ * condition: a `before-consonant` token is resolved by the next token that
+ * is neither another pre-base vowel nor a reph (reph is spliced into
+ * existing output and never releases a pending vowel).
+ */
+export function hasDanglingPreBaseVowel(tokens: Token[]): boolean {
+  for (let i = tokens.length - 1; i >= 0; i -= 1) {
+    const kind = tokens[i].reorder;
+    if (kind === "before-consonant") return true;
+    if (kind !== "reph") return false;
+  }
+  return false;
+}
+
+/**
  * Reassembles tokens from legacy visual order into Unicode logical order.
  *
  * Legacy Bengali ASCII fonts are visual-order: glyphs are typed in the order

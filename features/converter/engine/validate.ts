@@ -185,7 +185,24 @@ export function formatUnmappedDetails(
  * mapping is still available — this one only has the final text to work
  * with, so its checks are necessarily coarser.
  */
-export function validateUnicodeOutput(text: string): ValidationResult {
+export interface UnicodeOutputOptions {
+  /**
+   * The conversion ended with a pre-base vowel sign that never found its
+   * consonant (`hasDanglingPreBaseVowel`). The trailing mark run is then an
+   * unfinished cluster — someone mid-keystroke — not a reorder defect, so it
+   * is excluded from the stray-mark check. A stray mark anywhere else in the
+   * text is still reported.
+   */
+  incompleteCluster?: boolean;
+}
+
+/** A run of dependent vowel signs at the very end of the text. */
+const TRAILING_MARKS = /[া-ৌৗ]+$/u;
+
+export function validateUnicodeOutput(
+  text: string,
+  options: UnicodeOutputOptions = {},
+): ValidationResult {
   const warnings: string[] = [];
 
   if (text !== text.normalize("NFC")) {
@@ -194,8 +211,9 @@ export function validateUnicodeOutput(text: string): ValidationResult {
 
   // A Bengali dependent vowel sign (kar) or ৗ with no preceding base
   // consonant usually indicates a reorder defect rather than valid text.
+  const subject = options.incompleteCluster ? text.replace(TRAILING_MARKS, "") : text;
   const strayCombiningMark = /(^|\s)[া-ৌৗ]/u;
-  if (strayCombiningMark.test(text)) {
+  if (strayCombiningMark.test(subject)) {
     warnings.push(
       "Found a Bengali vowel sign with no preceding base consonant — likely a reorder defect."
     );

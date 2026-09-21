@@ -128,20 +128,24 @@ describe("convertLegacyText — edge cases", () => {
     }
   });
 
-  it("surfaces the reorder-defect warning end-to-end when a before-consonant vowel sign has no base consonant", () => {
+  it("keeps an unattached before-consonant vowel sign in the output without calling it a defect", () => {
     // Bijoy's "w" alone maps to the before-consonant kar ি with nothing
-    // before it to attach to — the reorder pass appends rather than drops
-    // it (see reorder.ts), and `validateUnicodeOutput` is now wired into
-    // `convertLegacyText` (previously computed but never called) so this
-    // reaches the user instead of failing silently.
+    // before it to attach to, and the reorder pass appends rather than
+    // drops it (see reorder.ts) — the engine never discards input.
+    //
+    // This used to also raise `validateUnicodeOutput`'s reorder-defect
+    // warning. It no longer does (E6): the converter runs on every debounced
+    // keystroke, so "w" is simply the state of "wK" one keystroke early, and
+    // warning there flashed a defect mid-word and filed a log row for a
+    // conversion that was about to be correct. A stray vowel sign anywhere
+    // other than that trailing position still reports — see
+    // `partialCluster.test.ts`, which owns this behaviour.
     const result = convertLegacyText("w", "bijoy");
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.unicodeText).toBe("ি");
-      expect(result.value.validation.valid).toBe(false);
-      expect(
-        result.value.validation.warnings.some((warning) => warning.includes("no preceding base consonant")),
-      ).toBe(true);
+      expect(result.value.validation.valid).toBe(true);
+      expect(result.value.validation.warnings).toEqual([]);
     }
   });
 

@@ -1,7 +1,7 @@
 import { AppErrors, ok, err, type AppError, type Result } from "@/lib/errors/types";
 import { getEncoding } from "../encodings/registry";
 import { tokenize } from "./tokenize";
-import { reorderTokens } from "./reorder";
+import { hasDanglingPreBaseVowel, reorderTokens } from "./reorder";
 import { assembleText, normalizeText, stripBom } from "./normalize";
 import {
   ALREADY_UNICODE_MESSAGE,
@@ -69,6 +69,9 @@ export function convertLegacyText(
   if (encoding.postProcess) {
     tokens = encoding.postProcess(tokens);
   }
+  // Checked before reordering: this asks whether the *input* ended
+  // mid-cluster, which is what `reorderTokens` then leaves pending.
+  const incompleteCluster = hasDanglingPreBaseVowel(tokens);
   tokens = reorderTokens(tokens);
 
   const unicodeText = normalizeText(assembleText(tokens));
@@ -81,7 +84,7 @@ export function convertLegacyText(
   // never fires here — this only ever surfaces its reorder-defect check for
   // this call site.
   const tokenValidation = validateTokens(tokens);
-  const outputValidation = validateUnicodeOutput(unicodeText);
+  const outputValidation = validateUnicodeOutput(unicodeText, { incompleteCluster });
   const validation: ValidationResult = {
     valid: tokenValidation.valid && outputValidation.valid,
     warnings: [...tokenValidation.warnings, ...outputValidation.warnings],
