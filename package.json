@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "scan:secrets": "node scripts/secretScan.mjs",
+    "scan:secrets:history": "node scripts/secretScan.mjs --history"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
