@@ -9,6 +9,8 @@ type WithId<T> = T & { id: string };
 
 type ListResponse<T> = { ok: true; records: WithId<T>[] } | { ok: false; error: SafeErrorResponse };
 
+type DeleteResponse = { ok: true; documentId: string } | { ok: false; error: SafeErrorResponse };
+
 interface HistoryRecords {
   conversions: WithId<ConversionRecord>[];
   comparisons: WithId<ComparisonRecord>[];
@@ -115,5 +117,46 @@ export function useAccountHistory() {
       });
   }, [getIdToken]);
 
-  return { ...state, refresh };
+  /**
+   * Deletes one uploaded document — the Storage object and the metadata
+   * record together (`DELETE /api/documents/[documentId]`).
+   *
+   * Resolves to `null` on success or a message to show the user on failure,
+   * rather than throwing: the caller is a click handler rendering the error
+   * next to the row it belongs to, and an unhandled rejection there would
+   * only reach the console.
+   *
+   * The row is removed from local state only once the server has confirmed
+   * it. An optimistic removal would hide the one partial-failure case that
+   * actually needs the user to retry — the file gone, the record still
+   * there — behind a row that had already vanished.
+   */
+  const deleteDocument = useCallback(
+    async (documentId: string): Promise<string | null> => {
+      const idToken = await getIdToken();
+      if (!idToken) return "Could not verify your session.";
+
+      let payload: DeleteResponse;
+      try {
+        const response = await fetch(`/api/documents/${encodeURIComponent(documentId)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        payload = (await response.json()) as DeleteResponse;
+      } catch {
+        return "Could not reach the server — check your connection and try again.";
+      }
+
+      if (!payload.ok) return payload.error.message;
+
+      setState((current) => ({
+        ...current,
+        documents: current.documents.filter((record) => record.id !== documentId),
+      }));
+      return null;
+    },
+    [getIdToken],
+  );
+
+  return { ...state, refresh, deleteDocument };
 }

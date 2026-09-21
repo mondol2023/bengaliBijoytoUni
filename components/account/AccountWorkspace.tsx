@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "motion/react";
-import { FileText, GitCompare, RefreshCw, Type } from "lucide-react";
+import { FileText, GitCompare, RefreshCw, Trash2, Type } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
@@ -34,7 +34,15 @@ function formatDate(iso: string): string {
 export function AccountWorkspace() {
   const reducedMotion = usePrefersReducedMotion();
   const { isConfigured, isLoading, user, profile, isProfileLoading, setAccountTier } = useAuth();
-  const { conversions, comparisons, documents, isLoading: isHistoryLoading, error, refresh } = useAccountHistory();
+  const {
+    conversions,
+    comparisons,
+    documents,
+    isLoading: isHistoryLoading,
+    error,
+    refresh,
+    deleteDocument,
+  } = useAccountHistory();
   const [tierError, setTierError] = useState<string | null>(null);
   const [isSavingTier, setIsSavingTier] = useState(false);
 
@@ -169,6 +177,8 @@ export function AccountWorkspace() {
             tone: record.extractionStatus === "success" ? ("success" as const) : ("danger" as const),
             toneLabel: record.extractionStatus,
           }))}
+          onDelete={deleteDocument}
+          deleteLabel="Delete this file and its history entry"
         />
       </motion.div>
     </motion.main>
@@ -189,11 +199,16 @@ function HistorySection({
   icon,
   empty,
   items,
+  onDelete,
+  deleteLabel,
 }: {
   title: string;
   icon: React.ReactNode;
   empty: string;
   items: HistoryItem[];
+  /** Resolves to null on success, or a message to show on this row. */
+  onDelete?: (id: string) => Promise<string | null>;
+  deleteLabel?: string;
 }) {
   return (
     <div className="flex flex-col rounded-lg border border-border bg-surface">
@@ -206,21 +221,100 @@ function HistorySection({
           <li className="px-4 py-6 text-center text-xs text-foreground/50">{empty}</li>
         ) : (
           items.map((item) => (
-            <li key={item.id} className="flex flex-col gap-1 px-4 py-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm font-medium">{item.primary}</span>
-                {item.tone && item.toneLabel && (
-                  <Badge tone={item.tone} className="shrink-0">
-                    {item.toneLabel}
-                  </Badge>
-                )}
-              </div>
-              <span className="text-xs text-foreground/60">{item.secondary}</span>
-              <span className="text-xs text-foreground/40">{formatDate(item.createdAt)}</span>
-            </li>
+            <HistoryRow
+              key={item.id}
+              item={item}
+              onDelete={onDelete}
+              deleteLabel={deleteLabel ?? "Delete"}
+            />
           ))
         )}
       </ul>
     </div>
+  );
+}
+
+/**
+ * One history row, with an optional two-step delete.
+ *
+ * The confirm step is inline rather than a modal: the thing being confirmed
+ * is the row you are already looking at, and a modal would have to repeat
+ * the file name to say which one it meant — reintroducing the name into a
+ * second surface for no gain.
+ *
+ * A failure stays on the row instead of replacing it. The partial-failure
+ * case this is most likely to surface ("the file was deleted, but its
+ * history entry could not be removed") is specifically one where the row is
+ * still real and retrying is the right move.
+ */
+function HistoryRow({
+  item,
+  onDelete,
+  deleteLabel,
+}: {
+  item: HistoryItem;
+  onDelete?: (id: string) => Promise<string | null>;
+  deleteLabel: string;
+}) {
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const confirm = () => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    void onDelete?.(item.id)
+      .then((message) => {
+        // On success the row unmounts, so only the failure path sets state.
+        if (message === null) return;
+        setDeleteError(message);
+        setIsDeleting(false);
+        setIsConfirming(false);
+      })
+      .catch(() => {
+        setDeleteError("Could not delete this file. Try again.");
+        setIsDeleting(false);
+        setIsConfirming(false);
+      });
+  };
+
+  return (
+    <li className="flex flex-col gap-1 px-4 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-sm font-medium">{item.primary}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          {item.tone && item.toneLabel && <Badge tone={item.tone}>{item.toneLabel}</Badge>}
+          {onDelete && !isConfirming && (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`${deleteLabel}: ${item.primary}`}
+              onClick={() => setIsConfirming(true)}
+              className="px-2 text-foreground/50 hover:text-danger"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+            </Button>
+          )}
+        </div>
+      </div>
+      <span className="text-xs text-foreground/60">{item.secondary}</span>
+      <span className="text-xs text-foreground/40">{formatDate(item.createdAt)}</span>
+      {isConfirming && (
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-foreground/70">Delete the stored file and this entry?</span>
+          <Button variant="danger" size="sm" loading={isDeleting} onClick={confirm}>
+            Delete
+          </Button>
+          <Button variant="ghost" size="sm" disabled={isDeleting} onClick={() => setIsConfirming(false)}>
+            Cancel
+          </Button>
+        </div>
+      )}
+      {deleteError && (
+        <p role="status" className="mt-1 text-xs text-danger">
+          {deleteError}
+        </p>
+      )}
+    </li>
   );
 }

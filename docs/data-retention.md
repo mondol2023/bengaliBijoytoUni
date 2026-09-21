@@ -134,3 +134,88 @@ They have no `expireAt`, so no policy will ever expire them. Two of them:
   script, and worth doing in the same pass once the periods are chosen.
   Backfilling with `createdAt + retention` rather than `now + retention`
   makes old rows expire on the same schedule they would have had.
+
+## 6. Uploaded files
+
+Everything above is about the two failure collections. Uploaded files are a
+separate and larger exposure: `recordDocumentUpload` saves the original file
+to Storage at `users/{uid}/documents/{docId}/{filename}` and writes a
+`documents/{docId}` metadata record, both for signed-in users only, and
+neither has ever expired.
+
+### What now exists: a per-file delete
+
+`DELETE /api/documents/[documentId]` removes both halves, exposed on each row
+of the Documents list on `/account`. `lib/firebase/deleteDocumentUpload.ts`
+owns the semantics; the part worth knowing outside that file is that **there
+is no transaction across Storage and Firestore**, so the order is the design:
+
+- Storage first. If it fails, nothing else is attempted and both halves
+  remain — the row is still in the history and the delete can be retried.
+- Firestore second. If it fails after the file is gone, the user is told
+  exactly that, and a retry works because the Storage delete passes
+  `ignoreNotFound`.
+
+The reverse order would allow the one state worth engineering against: the
+user's file still in the bucket with no record of it, invisible in the UI and
+no longer deletable by the person who uploaded it.
+
+`usage/{uid}` counters are not decremented. They are lifetime totals of
+activity, not an inventory of retained files.
+
+### Not built: account-deletion cascade — a proposal
+
+Deleting one file at a time is not the same as leaving. There is no
+account-deletion path in this codebase at all today (no `deleteUser` call
+anywhere, and `/api/admin/users/[uid]` exposes only `PATCH`), so this is a
+new feature rather than an extension, and it is not started.
+
+What a cascade would have to cover, read off the collections that carry a
+`userId`:
+
+| Data | Path | Proposed action |
+| --- | --- | --- |
+| Uploaded files | `users/{uid}/documents/**` in Storage | Delete the prefix. |
+| Document metadata | `documents` where `userId == uid` | Delete. |
+| Conversion history | `conversions` where `userId == uid` | Delete. |
+| Comparison history | `comparisons` where `userId == uid` | Delete. |
+| Usage counters | `usage/{uid}` | Delete. |
+| Profile | `users/{uid}` | Delete. |
+| Auth user | Firebase Auth | `getAdminAuth().deleteUser(uid)` — **last**, because it is the one step that cannot be retried under the same identity. |
+| Failure occurrences | `conversionFailures` where `userId == uid` | **Anonymize, not delete** — see below. |
+| Error log rows | `errorLogs` where `userId == uid` | Anonymize, same reasoning. |
+| Feedback | `feedback` where `userId == uid` | Anonymize; an admin may be mid-triage on it. |
+| Aggregates | `failurePatterns`, admin stats counters | Untouched. They hold no user field and cannot be attributed back. |
+
+Four things that need deciding before any of it is written, and none of them
+are technical:
+
+1. **Anonymize or delete the diagnostics.** A `conversionFailures` row holds
+   a failed sequence and an 80-character window — real content, but the only
+   evidence behind a mapping fix, and it is already on a 90-day clock.
+   Setting `userId: null` makes it exactly what an anonymous visitor's report
+   would have been. Deleting it is the stronger promise and loses the
+   evidence. I lean anonymize, and would say so in the disclosure.
+2. **Ordering and partial failure, at a much larger scale.** The same
+   two-store problem as a single file, across hundreds of documents and
+   several collections. It needs to be resumable: a durable "deletion
+   requested" marker that hides the account immediately, with the sweep as a
+   separate job that can be re-run, rather than one long request that can die
+   halfway and leave no record of how far it got.
+3. **Who can trigger it.** The user themselves (re-authentication required —
+   Firebase Auth demands a recent login for `deleteUser`), an admin, or both.
+4. **Whether it is immediate or delayed.** A grace period makes accidental
+   and coerced deletions recoverable; immediate deletion is the simpler
+   promise to keep.
+
+Cost is a day or two of work, most of it in the resumability. It should not
+be bolted onto the per-file delete — that one is small, synchronous and
+user-initiated, and a cascade is none of those things.
+
+### Also not built: a bucket lifecycle rule
+
+Storage has no expiry at all. A lifecycle rule on the bucket would give
+uploaded files the same kind of bound the failure collections now have.
+Deliberately **not** added — it deletes a user-visible feature (their
+document history) on a timer, which is a product decision, not a privacy
+cleanup.
