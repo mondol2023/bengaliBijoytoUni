@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 import { motionTokens } from "@/lib/motion/tokens";
 import type { ValidationResult } from "@/features/converter/engine/pipeline";
 
@@ -12,7 +12,14 @@ import type { ValidationResult } from "@/features/converter/engine/pipeline";
 const MAX_DETAILED = 8;
 
 export function ConversionWarnings({ validation }: { validation: ValidationResult | null }) {
-  const show = Boolean(validation && !validation.valid);
+  /**
+   * Already-Unicode input is a no-op, not a failure, so it reports
+   * `valid: true` (which is what keeps it out of the logs) and still needs
+   * to say something. It gets the neutral surface and an info icon rather
+   * than the warning palette — nothing went wrong.
+   */
+  const isNotice = Boolean(validation?.alreadyUnicode);
+  const show = Boolean(validation && (!validation.valid || isNotice));
   const details = validation?.unmappedDetails ?? [];
   const detailed = details.slice(0, MAX_DETAILED);
 
@@ -27,8 +34,18 @@ export function ConversionWarnings({ validation }: { validation: ValidationResul
           transition={{ duration: motionTokens.duration.fast, ease: motionTokens.easing.standard }}
           className="overflow-hidden"
         >
-          <div className="mx-4 mb-4 mt-1 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <div
+            className={
+              isNotice
+                ? "mx-4 mb-4 mt-1 flex items-start gap-2 rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-foreground/80"
+                : "mx-4 mb-4 mt-1 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning"
+            }
+          >
+            {isNotice ? (
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            ) : (
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            )}
             <div className="flex min-w-0 flex-col gap-2">
               {validation.warnings.map((warning) => (
                 <p key={warning}>{warning}</p>

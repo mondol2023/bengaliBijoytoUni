@@ -25,6 +25,57 @@ export interface ValidationResult {
   warnings: string[];
   unmappedSequences: string[];
   unmappedDetails: UnmappedDetail[];
+  /**
+   * The input was already standards-compliant Unicode Bengali, so there was
+   * nothing to convert. Not a failure: see `detectAlreadyUnicode`.
+   */
+  alreadyUnicode: boolean;
+}
+
+/** The Bengali Unicode block. Legacy CP1252 source text contains none of it. */
+const BENGALI_BLOCK = /[\u0980-\u09FF]/u;
+
+/** Characters that carry no evidence either way — spacing and shared punctuation. */
+const NEUTRAL = /[\s.,;:!?'"()[\]{}\-\u2010-\u2015\u2018\u2019\u201c\u201d\u2026/%\u200c\u200d]/u;
+
+/**
+ * Above this share of Bengali characters, the input is treated as already
+ * converted. Deliberately a majority rather than "contains any Bengali":
+ * a part-converted document is a real thing a user may want to finish
+ * converting, and it should still get honest per-character reporting.
+ */
+const ALREADY_UNICODE_RATIO = 0.5;
+
+/** The one message the user sees instead of a wall of unmapped characters. */
+export const ALREADY_UNICODE_MESSAGE =
+  "This text is already Unicode Bengali — there is nothing to convert. Paste legacy (Bijoy/SutonnyMJ) text to use the converter.";
+
+/**
+ * Detects input that is already standards-compliant Unicode Bengali.
+ *
+ * Pasting converted text back into the converter used to be the pipeline's
+ * single largest source of noise. Legacy text is CP1252 bytes, so the rule
+ * tables contain no Bengali-block characters at all; every Bengali letter in
+ * the input therefore missed every rule and was reported as an unmapped
+ * character. One ordinary paste produced ~18 distinct "unmapped sequence"
+ * warnings and filed ~18 `failurePatterns` rows, one per Bengali letter,
+ * none of which any mapping rule could ever fix.
+ *
+ * Counts only characters that carry evidence: whitespace, shared punctuation
+ * and the joiners appear in both legacy and Unicode text and so are ignored.
+ */
+export function detectAlreadyUnicode(text: string): boolean {
+  let bengali = 0;
+  let meaningful = 0;
+
+  for (const char of text) {
+    if (NEUTRAL.test(char)) continue;
+    meaningful += 1;
+    if (BENGALI_BLOCK.test(char)) bengali += 1;
+  }
+
+  if (meaningful === 0) return false;
+  return bengali / meaningful >= ALREADY_UNICODE_RATIO;
 }
 
 /** Tokens of converted text shown either side of an unmapped sequence. */
@@ -99,6 +150,7 @@ export function validateTokens(tokens: Token[]): ValidationResult {
     warnings,
     unmappedSequences,
     unmappedDetails,
+    alreadyUnicode: false,
   };
 }
 
@@ -149,5 +201,11 @@ export function validateUnicodeOutput(text: string): ValidationResult {
     );
   }
 
-  return { valid: warnings.length === 0, warnings, unmappedSequences: [], unmappedDetails: [] };
+  return {
+    valid: warnings.length === 0,
+    warnings,
+    unmappedSequences: [],
+    unmappedDetails: [],
+    alreadyUnicode: false,
+  };
 }

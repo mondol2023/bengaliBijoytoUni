@@ -3,7 +3,13 @@ import { getEncoding } from "../encodings/registry";
 import { tokenize } from "./tokenize";
 import { reorderTokens } from "./reorder";
 import { assembleText, normalizeText, stripBom } from "./normalize";
-import { validateTokens, validateUnicodeOutput, type ValidationResult } from "./validate";
+import {
+  ALREADY_UNICODE_MESSAGE,
+  detectAlreadyUnicode,
+  validateTokens,
+  validateUnicodeOutput,
+  type ValidationResult,
+} from "./validate";
 import { detectEncoding } from "./detectEncoding";
 import { CONVERSION_ENGINE_VERSION, computeRulesHash } from "./version";
 
@@ -81,7 +87,32 @@ export function convertLegacyText(
     warnings: [...tokenValidation.warnings, ...outputValidation.warnings],
     unmappedSequences: tokenValidation.unmappedSequences,
     unmappedDetails: tokenValidation.unmappedDetails,
+    alreadyUnicode: false,
   };
+
+  // E4. Text that is already Unicode Bengali matches no rule in a CP1252
+  // table, so every Bengali letter came back as an "unmapped character":
+  // ~18 warnings and ~18 unfixable `failurePatterns` rows from one ordinary
+  // paste. It is not a conversion failure, it is a no-op, so it reports as
+  // one — a single explanatory message, and `valid: true` so neither
+  // `useIssueLog` (which logs only when `!valid`) nor the failure reporter
+  // (which reads `unmappedDetails`) records anything.
+  if (detectAlreadyUnicode(sourceText)) {
+    return ok({
+      encodingId: encoding.id,
+      sourceText,
+      unicodeText,
+      validation: {
+        valid: true,
+        warnings: [ALREADY_UNICODE_MESSAGE],
+        unmappedSequences: [],
+        unmappedDetails: [],
+        alreadyUnicode: true,
+      },
+      engineVersion: CONVERSION_ENGINE_VERSION,
+      rulesHash: computeRulesHash(encoding),
+    });
+  }
 
   return ok({
     encodingId: encoding.id,
@@ -122,6 +153,7 @@ export function convertDocument(
 }
 
 export { detectEncoding, normalizeText, stripBom };
+export { detectAlreadyUnicode, ALREADY_UNICODE_MESSAGE } from "./validate";
 export { validateUnicodeOutput, formatUnmappedDetail, formatUnmappedDetails } from "./validate";
 export type { ValidationResult, UnmappedDetail } from "./validate";
 export type { DetectionResult, EncodingScore } from "./detectEncoding";
