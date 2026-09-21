@@ -21,6 +21,7 @@ vi.mock("../admin", () => ({ getAdminDb: vi.fn() }));
 
 import { getAdminDb } from "../admin";
 import { recordConversionFailures, type ConversionFailureInput } from "../conversionFailures";
+import { __resetWriteMetricsForTests, getWriteMetricsSnapshot } from "../writeMetrics";
 
 interface Increment {
   __increment: number;
@@ -172,6 +173,28 @@ describe("recordConversionFailures: occurrence counts", () => {
         .map(([, value]) => value.occurrenceCount)
         .sort((a, b) => Number(a) - Number(b)),
     ).toStrictEqual([3, 8]);
+  });
+
+  it("counts exactly two document writes per accepted report", async () => {
+    __resetWriteMetricsForTests();
+    await recordConversionFailures([input({ occurrenceCount: 500 })]);
+
+    const snapshot = getWriteMetricsSnapshot();
+    // Two documents whatever the occurrence count it carries — that ratio is
+    // the number the caching question turns on.
+    expect(snapshot.processTotal).toBe(2);
+    const day = Object.values(snapshot.days)[0];
+    expect(day.byCollection.conversionFailures.byOperation.create).toBe(1);
+    expect(day.byCollection.failurePatterns.byOperation.create).toBe(1);
+  });
+
+  it("counts the second report against a pattern as an update, not a create", async () => {
+    __resetWriteMetricsForTests();
+    await recordConversionFailures([input()]);
+    await recordConversionFailures([input()]);
+
+    const day = Object.values(getWriteMetricsSnapshot().days)[0];
+    expect(day.byCollection.failurePatterns.byOperation).toStrictEqual({ create: 1, update: 1 });
   });
 
   it("writes no whole-document field, whatever the batch size", async () => {

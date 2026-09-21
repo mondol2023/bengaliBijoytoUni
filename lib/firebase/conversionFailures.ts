@@ -25,6 +25,7 @@ import {
 } from "./schemas";
 import { computeFailurePatternId } from "@/lib/conversionFailures/patternId";
 import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";
+import { countWrites, type WriteOperation } from "./writeMetrics";
 import { logAppError } from "@/lib/errors/handlers";
 
 const FAILURES_COLLECTION = "conversionFailures";
@@ -110,10 +111,17 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
   };
   const validatedOccurrence = conversionFailureSchema.parse(occurrence);
 
+  // Counted around the transaction rather than inside it: Firestore retries
+  // a contended transaction, and counting per attempt would report retries
+  // as traffic. What a capacity question needs is writes committed per
+  // logical report, which is what one pass of this block is.
+  let patternOperation: WriteOperation = "update";
+
   await db.runTransaction(async (tx) => {
     const patternSnap = await tx.get(patternRef);
 
     if (!patternSnap.exists) {
+      patternOperation = "create";
       const pattern: FailurePattern = {
         encodingId: input.encodingId,
         engineVersion: input.engineVersion,
@@ -140,6 +148,14 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
 
     tx.set(occurrenceRef, validatedOccurrence);
   });
+
+  // Two document writes per accepted report, whatever the occurrence count
+  // it carries — which is the number the batching change is meant to hold
+  // down and the number the caching question turns on.
+  countWrites([
+    { collection: FAILURES_COLLECTION, operation: "create" },
+    { collection: PATTERNS_COLLECTION, operation: patternOperation },
+  ]);
 
   return occurrenceRef.id;
 }
