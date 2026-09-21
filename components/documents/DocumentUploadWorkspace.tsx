@@ -5,6 +5,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { EncodingSelector } from "@/components/converter/EncodingSelector";
 import { TierSelector } from "@/components/converter/TierSelector";
 import { Button } from "@/components/ui/Button";
+import { PrivacyNote } from "@/components/privacy/PrivacyNote";
+import { DOCUMENTS_NOTE } from "@/lib/privacy/disclosure";
 import { DocumentDropzone } from "./DocumentDropzone";
 import { DocumentResultPanel } from "./DocumentResultPanel";
 import { ConversionLogPanel } from "@/components/log/ConversionLogPanel";
@@ -108,6 +110,10 @@ export function DocumentUploadWorkspace() {
 
       <motion.div variants={itemVariants} className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4">
         <DocumentDropzone file={file} onFileSelected={setFile} disabled={isUploading} />
+
+        {/* The converter's line would be false here: this path really does
+            send the file to a server, and a signed-in upload is kept. */}
+        <PrivacyNote note={DOCUMENTS_NOTE} />
 
         <div className="flex items-center gap-2">
           <Button

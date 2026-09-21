@@ -4,6 +4,8 @@ import { useId, useMemo } from "react";
 import { motion } from "motion/react";
 import { Sparkles, Trash2, Download, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { PrivacyNote } from "@/components/privacy/PrivacyNote";
+import { CONVERTER_NOTE } from "@/lib/privacy/disclosure";
 import { EncodingSelector } from "./EncodingSelector";
 import { TierSelector } from "./TierSelector";
 import { UsageMeter } from "./UsageMeter";
@@ -193,6 +195,10 @@ export function ConverterWorkspace() {
             <span>{wordCount.toLocaleString()} words</span>
             <span>{usage.used.toLocaleString()} non-whitespace chars</span>
           </div>
+          {/* Under the input, not the output: this is the moment before
+              someone pastes, which is the only moment the line can change
+              what they paste. */}
+          <PrivacyNote note={CONVERTER_NOTE} className="border-t border-border px-4 py-3" />
         </div>
 
         {/* Unicode output panel */}

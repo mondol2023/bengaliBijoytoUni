@@ -1,14 +1,20 @@
 import Link from "next/link";
+import { FOOTER_LINK_LABEL, PRIVACY_HREF } from "@/lib/privacy/disclosure";
 
 /**
  * A colophon rather than a sitemap. The app has four pages worth linking and
  * two facts worth restating — an inflated footer would be furniture for a
  * product that does not exist yet.
+ *
+ * Privacy is the one entry that is not a feature. It is here because both
+ * inline disclosure lines end in a link to the same page, and a reader who
+ * has left the converter should still be able to find it.
  */
 const LINKS = [
   { href: "/converter", label: "Converter" },
   { href: "/documents", label: "Documents" },
   { href: "/compare", label: "Compare" },
+  { href: PRIVACY_HREF, label: FOOTER_LINK_LABEL.en },
 ];
 
 export function SiteFooter() {
