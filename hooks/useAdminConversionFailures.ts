@@ -14,7 +14,11 @@ type Response =
 export interface FailurePatternFilters {
   failureCategory: string;
   status: string;
+  /** "recent" (default, most recently active) or "frequent" (top N by occurrence count). */
+  sort: string;
 }
+
+export const DEFAULT_SORT = "recent";
 
 /** Radix `Select.Item` forbids an empty value, so "no filter" needs a real one. */
 export const ANY_FILTER = "all";
@@ -45,6 +49,7 @@ function buildQuery(filters: FailurePatternFilters): string {
   const params = new URLSearchParams();
   if (filters.failureCategory !== ANY_FILTER) params.set("failureCategory", filters.failureCategory);
   if (filters.status !== ANY_FILTER) params.set("status", filters.status);
+  if (filters.sort !== DEFAULT_SORT) params.set("sort", filters.sort);
   const query = params.toString();
   return query ? `?${query}` : "";
 }
@@ -69,10 +74,11 @@ export function useAdminConversionFailures() {
   const [filters, setFilters] = useState<FailurePatternFilters>({
     failureCategory: ANY_FILTER,
     status: ANY_FILTER,
+    sort: DEFAULT_SORT,
   });
   const [refreshToken, setRefreshToken] = useState(0);
 
-  const requestKey = `${filters.failureCategory}|${filters.status}|${refreshToken}`;
+  const requestKey = `${filters.failureCategory}|${filters.status}|${filters.sort}|${refreshToken}`;
   const [appliedKey, setAppliedKey] = useState(requestKey);
   if (appliedKey !== requestKey) {
     setAppliedKey(requestKey);
@@ -101,7 +107,7 @@ export function useAdminConversionFailures() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `requestKey` covers both filter fields
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `requestKey` covers every filter field
   }, [getIdToken, requestKey]);
 
   return {

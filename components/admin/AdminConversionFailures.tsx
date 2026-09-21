@@ -5,7 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
-import { ANY_FILTER, useAdminConversionFailures } from "@/hooks/useAdminConversionFailures";
+import { ANY_FILTER, DEFAULT_SORT, useAdminConversionFailures } from "@/hooks/useAdminConversionFailures";
 import { FAILURE_CATEGORIES, type FailureCategory } from "@/features/converter/engine/classify";
 
 export const CATEGORY_LABELS: Record<FailureCategory, string> = {
@@ -28,6 +28,17 @@ const STATUS_OPTIONS = [
   { value: ANY_FILTER, label: "All statuses" },
   { value: "open", label: "Open" },
   { value: "resolved", label: "Resolved" },
+];
+
+/**
+ * Two different questions, not a display preference: "recent" answers what is
+ * happening now, "frequent" answers what is worth fixing. A pattern seen once
+ * a minute ago outranks one seen nine hundred times this morning under the
+ * first and is outranked under the second.
+ */
+const SORT_OPTIONS = [
+  { value: DEFAULT_SORT, label: "Most recent" },
+  { value: "frequent", label: "Most frequent" },
 ];
 
 export function formatDate(iso: string): string {
@@ -65,6 +76,12 @@ export function AdminConversionFailures() {
             onValueChange={(status) => setFilters({ ...filters, status })}
             options={STATUS_OPTIONS}
             ariaLabel="Filter by status"
+          />
+          <Select
+            value={filters.sort}
+            onValueChange={(sort) => setFilters({ ...filters, sort })}
+            options={SORT_OPTIONS}
+            ariaLabel="Sort patterns"
           />
           <Button
             variant="ghost"

@@ -123,6 +123,31 @@
       ]
     },
     {
+      "collectionGroup": "failurePatterns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "failureCategory", "order": "ASCENDING" },
+        { "fieldPath": "occurrenceCount", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "failurePatterns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "occurrenceCount", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "failurePatterns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "failureCategory", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "occurrenceCount", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "aiResolutions",
       "queryScope": "COLLECTION",
       "fields": [
