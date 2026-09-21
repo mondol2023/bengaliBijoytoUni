@@ -1,12 +1,6 @@
 import { AppErrors, err, ok, type Result } from "@/lib/errors/types";
+import { stripBom } from "@/features/converter/engine/normalize";
 import type { ExtractedDocument } from "./types";
-
-const BOM_CHAR_CODE = 0xfeff;
-
-/** Strips a leading UTF-8 BOM, common in text files exported from Windows editors. */
-function stripBom(text: string): string {
-  return text.charCodeAt(0) === BOM_CHAR_CODE ? text.slice(1) : text;
-}
 
 /**
  * Plain-text extraction. Legacy Bijoy/SutonnyMJ `.txt` exports remap ASCII
@@ -16,6 +10,8 @@ function stripBom(text: string): string {
  * synchronous, unlike the other extractors, since there's no parsing to do.
  */
 export function extractTxtText(buffer: Buffer, fileName: string): Result<ExtractedDocument> {
+  // Shares the engine's BOM rule rather than keeping a second copy — the
+  // conversion pipeline applies the same strip to pasted text.
   const text = stripBom(buffer.toString("utf-8"));
 
   if (text.trim().length === 0) {

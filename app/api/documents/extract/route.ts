@@ -240,7 +240,7 @@ export async function POST(request: NextRequest) {
             fileName: file.name,
             fileType,
           },
-          text,
+          conversion.value.sourceText,
           detail,
         ),
         userId: user?.uid ?? null,

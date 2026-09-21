@@ -2,13 +2,23 @@ import { AppErrors, ok, err, type AppError, type Result } from "@/lib/errors/typ
 import { getEncoding } from "../encodings/registry";
 import { tokenize } from "./tokenize";
 import { reorderTokens } from "./reorder";
-import { assembleText, normalizeText } from "./normalize";
+import { assembleText, normalizeText, stripBom } from "./normalize";
 import { validateTokens, validateUnicodeOutput, type ValidationResult } from "./validate";
 import { detectEncoding } from "./detectEncoding";
 import { CONVERSION_ENGINE_VERSION, computeRulesHash } from "./version";
 
 export interface ConversionOutput {
   encodingId: string;
+  /**
+   * The input after source hygiene (currently BOM removal), i.e. the exact
+   * string every `sourceIndex`/`position` in `validation` indexes into.
+   *
+   * Callers that report a failure must window *this*, not the text they
+   * passed in: hygiene can shift offsets, and slicing the raw input with a
+   * post-hygiene offset yields an off-by-one context window and a wrong
+   * stored `position`.
+   */
+  sourceText: string;
   unicodeText: string;
   validation: ValidationResult;
   /** `CONVERSION_ENGINE_VERSION` at the time of this conversion. */
@@ -45,7 +55,11 @@ export function convertLegacyText(
     );
   }
 
-  let tokens = tokenize(text, encoding);
+  // Source hygiene runs before tokenizing so the rest of the pipeline, and
+  // every offset it produces, sees one canonical input.
+  const sourceText = stripBom(text);
+
+  let tokens = tokenize(sourceText, encoding);
   if (encoding.postProcess) {
     tokens = encoding.postProcess(tokens);
   }
@@ -71,6 +85,7 @@ export function convertLegacyText(
 
   return ok({
     encodingId: encoding.id,
+    sourceText,
     unicodeText,
     validation,
     engineVersion: CONVERSION_ENGINE_VERSION,
@@ -106,7 +121,7 @@ export function convertDocument(
   return convertLegacyText(input.extractedText, input.encodingId);
 }
 
-export { detectEncoding, normalizeText };
+export { detectEncoding, normalizeText, stripBom };
 export { validateUnicodeOutput, formatUnmappedDetail, formatUnmappedDetails } from "./validate";
 export type { ValidationResult, UnmappedDetail } from "./validate";
 export type { DetectionResult, EncodingScore } from "./detectEncoding";

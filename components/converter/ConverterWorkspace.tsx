@@ -50,7 +50,6 @@ export function ConverterWorkspace() {
   const {
     inputText,
     setInputText,
-    settledInputText,
     encodingChoice,
     setEncodingChoice,
     tier,
@@ -90,7 +89,7 @@ export function ConverterWorkspace() {
   );
 
   useConversionFailureReporter(
-    { source: "text", encodingId: resolvedEncodingId ?? null, sourceText: settledInputText },
+    { source: "text", encodingId: resolvedEncodingId ?? null },
     output,
   );
 

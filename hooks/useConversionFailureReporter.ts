@@ -8,12 +8,6 @@ import type { ConversionOutput } from "@/features/converter/engine/pipeline";
 export interface ConversionFailureReportContext {
   source: "text" | "file" | "comparison" | "api";
   encodingId: string | null;
-  /**
-   * The complete original conversion input. Read locally to slice the context
-   * window around each failed sequence and **never sent anywhere** — see the
-   * privacy bound in `lib/conversionFailures/occurrence.ts`.
-   */
-  sourceText: string;
   fileName?: string | null;
   fileType?: string | null;
 }
@@ -30,7 +24,9 @@ function patternKey(encodingId: string | null, engineVersion: string, sequence: 
  *
  * Each report carries the failed sequence plus a bounded context window and
  * nothing more; `buildFailureOccurrence` owns that bound and the server
- * discards anything wider.
+ * discards anything wider. The window is sliced from `output.sourceText`
+ * rather than the raw input, because source hygiene can shift the offsets
+ * the validation reports (see `ConversionOutput.sourceText`).
  *
  * Scoped to `unmapped_character` failures only: those are the ones with a
  * clear failed sequence and position a human can act on to fix a mapping
@@ -74,7 +70,7 @@ export function useConversionFailureReporter(
           fileName: context.fileName,
           fileType: context.fileType,
         },
-        context.sourceText,
+        output.sourceText,
         detail,
       ),
       sessionId,
@@ -102,7 +98,6 @@ export function useConversionFailureReporter(
     output,
     context.source,
     context.encodingId,
-    context.sourceText,
     context.fileName,
     context.fileType,
     sessionId,
