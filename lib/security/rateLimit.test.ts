@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { checkRateLimit, getRequestIp } from "./rateLimit";
 
 describe("checkRateLimit", () => {
@@ -31,15 +31,21 @@ describe("checkRateLimit", () => {
   });
 
   it("resets once the window elapses", () => {
-    const key = `test:${crypto.randomUUID()}`;
-    expect(checkRateLimit({ key, limit: 1, windowMs: 1 }).ok).toBe(true);
-    expect(checkRateLimit({ key, limit: 1, windowMs: 1 }).ok).toBe(false);
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        expect(checkRateLimit({ key, limit: 1, windowMs: 1 }).ok).toBe(true);
-        resolve();
-      }, 5);
-    });
+    // Fake timers, not a 1ms window and a real `setTimeout`. With
+    // `windowMs: 1` the two synchronous calls below straddle a millisecond
+    // boundary every so often, the window closes between them, and the
+    // second call legitimately returns `ok: true` — a failure that says
+    // nothing about the limiter and fails the suite at random.
+    vi.useFakeTimers();
+    try {
+      const key = `test:${crypto.randomUUID()}`;
+      expect(checkRateLimit({ key, limit: 1, windowMs: 1_000 }).ok).toBe(true);
+      expect(checkRateLimit({ key, limit: 1, windowMs: 1_000 }).ok).toBe(false);
+      vi.advanceTimersByTime(1_001);
+      expect(checkRateLimit({ key, limit: 1, windowMs: 1_000 }).ok).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
