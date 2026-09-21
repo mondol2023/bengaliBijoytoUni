@@ -2,17 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { requireServerUser } from "@/lib/auth/session";
 import { documentRecordSchema } from "@/lib/firebase/schemas";
-import { logAppError, statusForAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
 const RECENT_LIMIT = 20;
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/documents" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/documents");
 
 /**
  * Lists the caller's own uploaded-document records (metadata only — never

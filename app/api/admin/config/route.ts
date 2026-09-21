@@ -6,15 +6,12 @@ import { getSystemConfig, setSystemConfig } from "@/lib/firebase/systemConfig";
 import type { SystemConfig } from "@/lib/firebase/schemas";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { listEncodings } from "@/features/converter/encodings/registry";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, logAppError, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/admin/config" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/admin/config");
 
 const tierOverrideSchema = z.object({ maxNonWhitespaceChars: z.number().int().positive() }).nullable().optional();
 

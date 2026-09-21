@@ -4,8 +4,8 @@ import { getServerUser } from "@/lib/auth/session";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { FEEDBACK_LIMITS, writeFeedback } from "@/lib/firebase/feedback";
 import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
@@ -13,10 +13,7 @@ export const runtime = "nodejs";
 // twelve times a minute, and this route is reachable anonymously.
 const RATE_LIMIT = { limit: 5, windowMs: 10 * 60 * 1000 };
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/feedback" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/feedback");
 
 const bodySchema = z.object({
   category: z.enum([

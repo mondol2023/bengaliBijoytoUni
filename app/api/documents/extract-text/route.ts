@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { extractDocumentText } from "@/features/documents/extract";
+import { rejectOversizeFile, rejectOversizeRequest } from "@/features/documents/uploadGuard";
 import { getServerUser } from "@/lib/auth/session";
 import { getSystemConfigSafe } from "@/lib/firebase/systemConfig";
 import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
-import { logAppError, statusForAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
@@ -14,10 +15,7 @@ export const runtime = "nodejs";
 // in-memory, per-instance limiter.
 const RATE_LIMIT = { limit: 20, windowMs: 5 * 60 * 1000 };
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/documents/extract-text" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/documents/extract-text");
 
 /**
  * Extraction-only sibling of `/api/documents/extract` — returns raw
@@ -38,6 +36,10 @@ export async function POST(request: NextRequest) {
   const rateLimit = checkRateLimit({ key: rateLimitKey, ...RATE_LIMIT });
   if (!rateLimit.ok) return fail(rateLimit.error);
 
+  // Before `formData()`, which is what actually buffers the body.
+  const oversizeRequest = rejectOversizeRequest(request, systemConfig.maxUploadSizeBytes);
+  if (oversizeRequest) return fail(oversizeRequest);
+
   let formData: FormData;
   try {
     formData = await request.formData();
@@ -50,8 +52,14 @@ export async function POST(request: NextRequest) {
     return fail(AppErrors.validation('Missing "file" field.', { details: { field: "file" } }));
   }
 
+  const oversizeFile = rejectOversizeFile(file, systemConfig.maxUploadSizeBytes);
+  if (oversizeFile) return fail(oversizeFile);
+
   const buffer = Buffer.from(await file.arrayBuffer());
-  const extraction = await extractDocumentText(buffer, file.name, file.type);
+  // Passes the admin-configured cap through, like `/api/documents/extract`
+  // already did — this route was falling back to the hard-coded default and
+  // ignoring `systemConfig.maxUploadSizeBytes` entirely.
+  const extraction = await extractDocumentText(buffer, file.name, file.type, systemConfig.maxUploadSizeBytes);
   if (!extraction.ok) return fail(extraction.error);
 
   const { text, fileType, pageCount, notes } = extraction.value;

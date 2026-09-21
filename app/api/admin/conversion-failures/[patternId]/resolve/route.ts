@@ -7,15 +7,12 @@ import { resolveConversionFailure } from "@/lib/ai/resolveConversionFailure";
 import { SUPPORTED_PROVIDER_IDS } from "@/lib/ai/types";
 import { RESOLUTION_LIMITS } from "@/lib/ai/limits";
 import { checkRateLimit } from "@/lib/security/rateLimit";
-import { logAppError, statusForAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, logAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/admin/conversion-failures/[patternId]/resolve" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/admin/conversion-failures/[patternId]/resolve");
 
 async function auditSafely(input: Parameters<typeof writeAuditLog>[0]) {
   try {

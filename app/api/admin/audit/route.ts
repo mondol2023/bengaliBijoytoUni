@@ -2,17 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminUser } from "@/lib/auth/session";
 import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { auditLogSchema } from "@/lib/firebase/schemas";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
 const RECENT_LIMIT = 100;
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/admin/audit" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/admin/audit");
 
 /** The most recent admin actions, newest first. Admin-only, per `firestore.rules`. */
 export async function GET(request: NextRequest) {

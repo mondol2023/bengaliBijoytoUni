@@ -4,8 +4,8 @@ import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { requireServerUser } from "@/lib/auth/session";
 import { recordComparison } from "@/lib/firebase/recordActivity";
 import { comparisonRecordSchema } from "@/lib/firebase/schemas";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
@@ -19,10 +19,7 @@ const bodySchema = z.object({
   changedWordCount: z.number().int().nonnegative(),
 });
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/comparisons" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/comparisons");
 
 /** Explicit "save to history" for the comparison tool — the diff itself is already computed client-side. */
 export async function POST(request: NextRequest) {

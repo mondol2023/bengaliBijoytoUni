@@ -1,6 +1,6 @@
 # Conversion Failure Intelligence Pipeline
 
-Status: **Phases 1–7 implemented** (failure capture, patterns, provider-agnostic AI resolution library, the server-side resolution service + admin API route that persists candidates into `aiResolutions`, and the server-side admin accept/reject review workflow — see §7.4). The admin UI (§9) is **not yet built** — nothing calls the resolve or review endpoints except direct API requests (or tests).
+Status: **Phases 1–9 implemented** (failure capture, patterns, provider-agnostic AI resolution library, the server-side resolution service + admin API route that persists candidates into `aiResolutions`, the server-side admin accept/reject review workflow — see §7.4 — the system-wide invariant tests of §10, and the §9 admin UI). Both the list view (`/admin/conversion-failures`) and the pattern detail view (`/admin/conversion-failures/[patternId]`) ship, with working "Resolve with Gemini/OpenAI" and accept/reject controls wired through `hooks/useConversionFailureDetail.ts`.
 Owner: conversion engine / admin tooling
 Related: `docs/firebase-setup.md`, `lib/firebase/errorLog.ts`, `lib/firebase/feedback.ts`
 
@@ -319,11 +319,14 @@ Firestore-independent by design (§7's library, built in Phase 5).
   never touches `EncodingDefinition.rules`, `postProcess`, `reorder` rules, or otherwise
   changes conversion behavior.
 
-### 7.3 What's intentionally not built yet (Phase 8+)
+### 7.3 What's intentionally not built
 
-- **The admin UI** described in §9 — the list view, the pattern detail page, and "Resolve with
-  Gemini/OpenAI" / accept / reject buttons. Phases 6 and 7 ship the two API routes those
-  buttons will call; nothing calls them yet except direct API requests (or tests).
+- **A provider-configured affordance in the admin UI.** The "Resolve with Gemini/OpenAI"
+  buttons in §9 are always enabled; a provider with no API key configured is rejected
+  server-side with a clear `provider_not_configured` error rather than being greyed out up
+  front. Disabling the button would need an endpoint that reports which providers are
+  configured, which does not exist. The server-side rejection is the guarantee; the button
+  state is only an affordance.
 - **Any automatic engine-rule generation.** An accepted AI candidate never becomes a
   `map.ts`/`EncodingDefinition.rules` change by itself — per §2/§10, that stays a normal,
   human-reviewed code change even with Phase 7's accept/reject action in place. Accepting a
@@ -448,9 +451,9 @@ throws under a simulated `window`, and no client-reachable directory references
   the same failure seen thousands of times costs at most one AI call per key, not thousands.
 - If a provider's API key isn't configured, `resolveConversionFailure` gets
   `provider_not_configured` from the adapter and the route returns a clear, safe "not
-  configured" error — never a crash, never a leaked key. (The admin UI's client-side "disable
-  the button" affordance is part of the not-yet-built §9 UI — the server-side rejection
-  exists today regardless of any UI.)
+  configured" error — never a crash, never a leaked key. The §9 admin UI surfaces that error
+  rather than disabling the button up front (see §7.3); the server-side rejection is the
+  guarantee either way.
 
 ## 9. Admin UI
 
@@ -460,18 +463,39 @@ throws under a simulated `window`, and no client-reachable directory references
   exists.
 - `/admin/conversion-failures/[patternId]` — pattern detail: recent occurrences (full
   text/context, collapsed by default), all AI resolutions per provider, "Resolve with
-  Gemini/OpenAI" actions, and accept/reject controls. Phase 7 already ships the
-  `POST .../[patternId]/review` endpoint these controls would call (§7.4); building the
-  buttons/UI themselves remains a later phase's job.
+  Gemini/OpenAI" actions, and accept/reject controls, calling
+  `POST .../[patternId]/resolve` (§7.2) and `POST .../[patternId]/review` (§7.4) through
+  `hooks/useConversionFailureDetail.ts`.
+
+Raw legacy byte sequences (`failedSequence`, `fullText`, the context windows) are set in the
+mono face throughout both views, and only genuinely converted Unicode — `engineOutput`,
+`candidateConversion`, the alternatives — is set in Noto Sans Bengali and marked `lang="bn"`.
+Noto Sans Bengali has no glyphs for the Latin-1 code points a legacy sequence is made of, so
+setting bytes in it produces an unpredictable system fallback in the one panel whose whole
+job is making those bytes legible.
 
 ## 10. What this system deliberately does NOT do
 
+These three are enforced, not just documented: `lib/ai/__tests__/invariants.test.ts` asserts
+each one, mirroring what `lib/ai/__tests__/security.test.ts` does for §8. The per-module unit
+tests prove each piece behaves correctly today; these prove the system-wide guarantees survive
+a later change to any of those pieces — including the §9 admin UI.
+
 - It does not overwrite `engineOutput` or the original `failedSequence` with an AI
   candidate — both live side by side, permanently, so a wrong AI answer is just as visible
-  as a right one.
+  as a right one. *Enforced by:* `aiResolutionSchema` having no field either value could be
+  written into; an accept/reject leaving the seeded `conversionFailures`/`failurePatterns`
+  documents byte-for-byte unchanged; a review opening no collection but `aiResolutions`; and
+  no shipped `lib/ai/*` module naming either evidence collection as a write target.
 - It does not automatically send full document text to Gemini/OpenAI, even though full text
   is stored in Firestore — storage and third-party transmission are treated as separate
-  exposure surfaces.
+  exposure surfaces. *Enforced by:* asserting at the HTTP boundary — the actual `fetch` body
+  each adapter puts on the wire — that a request carrying `fullText`/context sentinels
+  transmits none of them under default options, and all of them only on an explicit
+  `includeContext`/`includeFullText` opt-in.
 - It does not automatically edit `features/converter/encodings/*/map.ts`. A verified fix
   becomes a normal, reviewed, tested code change — this pipeline only produces the evidence
-  and the candidate that motivates it.
+  and the candidate that motivates it. *Enforced by:* hashing every `map.ts` before and after
+  an accept and requiring them unchanged, plus a static check that no shipped module under
+  `lib/ai/**` or `app/api/admin/conversion-failures/**` imports a filesystem module or
+  references `features/converter/encodings` at all.

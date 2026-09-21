@@ -4,18 +4,15 @@ import { requireAdminUser } from "@/lib/auth/session";
 import { getAdminAuth, getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { userProfileSchema, usageOverrideSchema } from "@/lib/firebase/schemas";
 import { DEFAULT_TIER } from "@/features/usage/tierConfig";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 import type { TierId } from "@/types/domain";
 
 export const runtime = "nodejs";
 
 const PAGE_SIZE = 50;
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/admin/users" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/admin/users");
 
 export interface AdminUserRow {
   uid: string;

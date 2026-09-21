@@ -3,8 +3,8 @@ import { z } from "zod";
 import { getAdminAuth, isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
 import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
@@ -17,10 +17,7 @@ const RATE_LIMIT = { limit: 20, windowMs: 5 * 60 * 1000 };
 
 const bodySchema = z.object({ idToken: z.string().min(1) });
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/auth/session" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/auth/session");
 
 /**
  * Exchanges a verified ID token for an httpOnly session cookie, used only so

@@ -2,15 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminUser } from "@/lib/auth/session";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { getFailurePatternDetail, listAiResolutionsForPattern } from "@/lib/firebase/conversionFailures";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/admin/conversion-failures/[patternId]" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/admin/conversion-failures/[patternId]");
 
 /**
  * One failure pattern's full detail — recent occurrences (full text/context

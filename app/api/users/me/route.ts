@@ -4,18 +4,15 @@ import { getAdminAuth, getAdminDb, isFirebaseAdminConfigured } from "@/lib/fireb
 import { requireServerUser } from "@/lib/auth/session";
 import { userProfileSchema, type UserProfile } from "@/lib/firebase/schemas";
 import { recordUserCreated, recordUserTierChange } from "@/lib/firebase/adminStats";
-import { logAppError, statusForAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, logAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 import { DEFAULT_TIER } from "@/features/usage/tierConfig";
 
 export const runtime = "nodejs";
 
 const tierBodySchema = z.object({ tier: z.enum(["easy", "medium", "expert"]) });
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/users/me" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/users/me");
 
 /**
  * A signed-in user's own account profile — the server-known record that

@@ -8,9 +8,10 @@ import {
   formatUnmappedDetails,
 } from "@/features/converter/engine/pipeline";
 import { extractDocumentText } from "@/features/documents/extract";
+import { rejectOversizeFile, rejectOversizeRequest } from "@/features/documents/uploadGuard";
 import { validateUsage } from "@/features/usage/usageService";
-import { logAppError, statusForAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, logAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 import { getServerUser } from "@/lib/auth/session";
 import { resolveServerLimits } from "@/lib/auth/tier";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
@@ -30,10 +31,7 @@ export const runtime = "nodejs";
 // in-memory, per-instance limiter.
 const RATE_LIMIT = { limit: 20, windowMs: 5 * 60 * 1000 };
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/documents/extract" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/documents/extract");
 
 /** Mirrors `hooks/useConversionFailureReporter.ts`'s window size — see that module's doc for why. */
 const CONTEXT_WINDOW_CHARS = 80;
@@ -94,6 +92,11 @@ export async function POST(request: NextRequest) {
   const rateLimit = checkRateLimit({ key: rateLimitKey, ...RATE_LIMIT });
   if (!rateLimit.ok) return fail(rateLimit.error);
 
+  // Before `formData()`, which is what actually buffers the body.
+  const systemConfig = await getSystemConfigSafe();
+  const oversizeRequest = rejectOversizeRequest(request, systemConfig.maxUploadSizeBytes);
+  if (oversizeRequest) return fail(oversizeRequest);
+
   let formData: FormData;
   try {
     formData = await request.formData();
@@ -106,7 +109,9 @@ export async function POST(request: NextRequest) {
     return fail(AppErrors.validation('Missing "file" field.', { details: { field: "file" } }));
   }
 
-  const systemConfig = await getSystemConfigSafe();
+  const oversizeFile = rejectOversizeFile(file, systemConfig.maxUploadSizeBytes);
+  if (oversizeFile) return fail(oversizeFile);
+
   if (systemConfig.featureFlags?.documentsEnabled === false) {
     return fail(AppErrors.authorization("Document uploads are currently disabled by an administrator."));
   }

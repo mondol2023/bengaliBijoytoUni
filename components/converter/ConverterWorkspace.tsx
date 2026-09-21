@@ -45,11 +45,12 @@ export function ConverterWorkspace() {
   const { user, getIdToken } = useAuth();
   const inputId = useId();
   const outputId = useId();
+  const outputLabelId = useId();
 
   const {
     inputText,
     setInputText,
-    convertedText,
+    settledInputText,
     encodingChoice,
     setEncodingChoice,
     tier,
@@ -89,7 +90,7 @@ export function ConverterWorkspace() {
   );
 
   useConversionFailureReporter(
-    { source: "text", encodingId: resolvedEncodingId ?? null, fullText: convertedText },
+    { source: "text", encodingId: resolvedEncodingId ?? null, fullText: settledInputText },
     output,
   );
 
@@ -198,9 +199,13 @@ export function ConverterWorkspace() {
         {/* Unicode output panel */}
         <div className="flex flex-col rounded-lg border border-border bg-surface">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <label htmlFor={outputId} className="text-sm font-semibold">
+            {/* Not a <label htmlFor>: the output is a <div>, which is not a
+                labelable element, so the association silently did nothing.
+                A plain heading referenced by aria-labelledby names the region
+                for assistive tech and stays visible for everyone else. */}
+            <h2 id={outputLabelId} className="text-sm font-semibold">
               Unicode output
-            </label>
+            </h2>
             <div className="flex items-center gap-2">
               <CopyButton text={output?.unicodeText ?? ""} />
               <Button
@@ -221,11 +226,18 @@ export function ConverterWorkspace() {
               )}
             </div>
           </div>
+          {/* `role="textbox"` was wrong twice over: it promises an editable
+              field, and it was never focusable, so a screen-reader user could
+              not reach it in forms mode. This is read-only output that
+              updates as you type, so it is a live region instead — matching
+              what the landing page's proof slip already does. `lang="bn"`
+              lets a screen reader switch to a Bengali voice rather than
+              reading the conversion result with an English one. */}
           <div
             id={outputId}
-            role="textbox"
-            aria-readonly="true"
-            aria-label="Converted Unicode output"
+            role="region"
+            aria-labelledby={outputLabelId}
+            aria-live="polite"
             className="font-bengali min-h-64 flex-1 whitespace-pre-wrap break-words p-4 text-base leading-relaxed"
           >
             {isOverLimit ? (
@@ -239,7 +251,10 @@ export function ConverterWorkspace() {
                 {error.message}
               </span>
             ) : output?.unicodeText ? (
-              output.unicodeText
+              // `lang` goes on the Bengali itself, not the panel: the panel
+              // also holds English placeholder/error copy, which a screen
+              // reader would then read with a Bengali voice.
+              <span lang="bn">{output.unicodeText}</span>
             ) : (
               <span className="text-sm text-foreground/40">Converted text will appear here…</span>
             )}

@@ -37,10 +37,13 @@ export function DocumentResultPanel({ result }: { result: DocumentConversionResu
           </div>
         </div>
 
+        {/* Read-only converted output, not an editable field — see the same
+            correction in `ConverterWorkspace`. `lang="bn"` so a screen reader
+            reads Bengali with a Bengali voice. */}
         <div
-          role="textbox"
-          aria-readonly="true"
+          role="region"
           aria-label="Converted Unicode output"
+          lang="bn"
           className="font-bengali min-h-48 flex-1 whitespace-pre-wrap break-words p-4 text-base leading-relaxed"
         >
           {result.unicodeText}

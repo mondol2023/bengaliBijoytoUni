@@ -24,7 +24,7 @@ landing-page or marketing-copy related), `DESIGN.md` (visual design system, from
 
 ```bash
 npm run dev              # dev server (Turbopack)
-npm run build             # production build — currently fails, see "Known build issue" below
+npm run build             # production build
 npm run start              # run a production build
 npm run lint                 # ESLint (flat config, eslint-config-next)
 npx tsc --noEmit               # typecheck
@@ -34,17 +34,22 @@ npx vitest run path/to/file.test.ts          # a single test file
 npx vitest run -t "test name substring"      # a single test by name
 ```
 
-Every change is expected to pass `npx tsc --noEmit`, `npm run lint`, and `npx vitest run`
-before being considered done (this is the project's own standing validation bar — see
-`PROGRESS.md`). `npm run build` is a known exception right now (below).
+Every change is expected to pass `npx tsc --noEmit`, `npm run lint`, `npx vitest run`, **and**
+`npm run build` before being considered done — this is the project's own standing validation
+bar (see `PROGRESS.md`). All four are green as of 2026-09-21.
 
-### Known build issue
+Two notes on that, since earlier revisions of this file said otherwise:
 
-`next build` fails under Turbopack (~89 `Can't resolve 'child_process'/'dns'/<grpc>` errors)
-because `next.config.ts` has no `serverExternalPackages: ["firebase-admin"]`. This predates
-and is unrelated to feature work — it's a real one-line fix, deliberately left unapplied
-because it's a global build-config change, not something to fold silently into an unrelated
-diff. Don't "fix" it as a side effect of another task; call it out and let it be its own step.
+- The old "Known build issue" (~89 `Can't resolve 'child_process'/'dns'/<grpc>` errors from a
+  missing `serverExternalPackages: ["firebase-admin"]`) **does not reproduce**. Next 16.3.5
+  compiles this app cleanly without that option; the only thing that had been failing
+  `npm run build` was a single typecheck error in `features/converter/__tests__/conversion.test.ts`
+  (reading `details.field` off an un-narrowed `AppError`), now fixed. Don't add
+  `serverExternalPackages` for a problem that isn't there — if grpc resolution errors come
+  back after a Next upgrade, that's the moment to reach for it.
+- `next.config.ts` pins `turbopack.root` to this directory. The parent folder holds a stray
+  empty `package-lock.json`, and without the pin Turbopack warns on every build that it is
+  ignoring a lockfile outside the git repo.
 
 ## Architecture
 
@@ -97,6 +102,20 @@ user-safe; `debug` is server-only and stripped before a response ever serializes
 client-side by accident). When adding a new failure mode, prefer an existing `AppErrorCode`
 over inventing a new one unless it needs its own HTTP status/shape.
 
+Two rules that are load-bearing rather than stylistic:
+
+- **An API route gets its error responder from `failResponder("api/its/path")`**, declared once
+  at module scope, instead of hand-rolling a private `fail()`. Every route used to carry a
+  byte-identical copy (21 of them), which gave the response contract 21 places to drift. The
+  shared one is also where `Retry-After` gets set on a `RATE_LIMIT_ERROR`.
+- **`toAppError` recognizes our errors by checking `code` against the real `AppErrorCode` set**,
+  not by duck-typing `"code" in cause`. A `FirebaseError` is also `{ code, message }`, so the
+  old shape check passed Firestore's own message through as if it were user-safe and left
+  `statusForAppError` with no matching case — which returned `undefined`, and
+  `Response.json(body, { status: undefined })` sends **200**. Anything unrecognized now becomes
+  an `UNKNOWN_ERROR` carrying the caller's fallback message, with the original preserved in
+  `debug`. `lib/errors/__tests__/handlers.test.ts` locks both halves down.
+
 ### Auth: bearer token everywhere, one narrow exception
 
 Every API route authenticates via `requireServerUser`/`requireAdminUser`
@@ -141,10 +160,12 @@ accepts/rejects before anything touches an actual `encodings/*/map.ts` table. De
 control is a deterministic Firestore doc ID (`computeResolutionKey`, hashing
 pattern+provider+model+promptVersion+engineVersion+rulesHash) claimed transactionally
 (`claimResolutionSlot`) before any provider call, so concurrent requests for the same key get a
-409 instead of triggering a second paid call. **Phases 1–6 (capture, patterns, provider
-library, resolution service + API route) are built; Phase 7+ (the admin review UI itself) is
-not** — check `docs/conversion-failure-pipeline.md` §7.3 and `PROGRESS.md` before assuming an
-admin-facing surface exists for this.
+409 instead of triggering a second paid call. **This is fully built, admin UI included** —
+`/admin/conversion-failures` (list) and `/admin/conversion-failures/[patternId]` (detail, with
+working "Resolve with Gemini/OpenAI" and accept/reject controls via
+`hooks/useConversionFailureDetail.ts`). Earlier revisions of this file and of
+`docs/conversion-failure-pipeline.md` said the UI was unbuilt; that was stale. See
+`docs/conversion-failure-pipeline.md` §7.3 for the one thing that genuinely isn't built.
 
 ### Route/feature layout
 
@@ -152,6 +173,20 @@ admin-facing surface exists for this.
 its own `__tests__/`) and `lib/<concern>/`, with `hooks/` as thin React wrappers over them.
 `components/` is presentational, grouped by feature. When changing behavior, look for it in
 `features/`/`lib/` first — `app/` files are usually just wiring.
+
+### Rendering Bengali vs. legacy bytes
+
+The two are never interchangeable on screen, and the distinction is functional, not cosmetic:
+
+- **Converted Unicode Bengali** → `font-bengali` **and** `lang="bn"`, so a screen reader
+  switches to a Bengali voice. Put `lang` on the Bengali itself, not on a panel that also
+  holds English placeholder or error copy.
+- **Legacy source bytes** (`failedSequence`, a `fullText` capture, context windows, the ghost
+  behind the giant specimen) → `font-mono`. Noto Sans Bengali has no glyphs for the Latin-1
+  code points a legacy sequence is made of, so setting bytes in it produces an unpredictable
+  system fallback — in exactly the panels whose job is making those bytes legible.
+- Read-only converted output is a `role="region"` with `aria-live="polite"`, not a
+  `role="textbox"`. A textbox role promises an editable, focusable field; these are neither.
 
 ## Standing process note
 

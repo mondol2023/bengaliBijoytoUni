@@ -5,18 +5,15 @@ import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { FEEDBACK_LIMITS, listFeedback, updateFeedback } from "@/lib/firebase/feedback";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import type { Feedback } from "@/lib/firebase/schemas";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, logAppError, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
 const RECENT_LIMIT = 100;
 const STATUSES = ["new", "reviewed", "resolved"] as const satisfies readonly Feedback["status"][];
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/admin/feedback" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/admin/feedback");
 
 /** Matches the rest of `/api/admin/*`: a lost audit row must not fail the action it describes. */
 async function auditSafely(input: Parameters<typeof writeAuditLog>[0]) {

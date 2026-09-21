@@ -92,9 +92,14 @@ describe("convertLegacyText — edge cases", () => {
     const result = convertLegacyText("K", "");
     expect(result.ok).toBe(false);
     if (!result.ok) {
+      // Narrow on `code` before reading `details` — `AppError.details` is a
+      // union whose shape differs per variant, and only the VALIDATION_ERROR
+      // variant carries `field`.
       expect(result.error.code).toBe("VALIDATION_ERROR");
       expect(result.error.message).not.toContain('""');
-      expect(result.error.details?.field).toBe("encodingId");
+      if (result.error.code === "VALIDATION_ERROR") {
+        expect(result.error.details?.field).toBe("encodingId");
+      }
     }
   });
 

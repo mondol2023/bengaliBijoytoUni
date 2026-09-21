@@ -55,6 +55,16 @@ const SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  /**
+   * This app is its own git repository nested inside an outer folder that
+   * happens to contain a stray empty `package-lock.json`. Turbopack infers
+   * the workspace root from lockfiles, finds that one, and warns that it is
+   * ignoring it — pinning the root here removes the ambiguity rather than
+   * leaving the build to guess correctly every time.
+   */
+  turbopack: {
+    root: __dirname,
+  },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

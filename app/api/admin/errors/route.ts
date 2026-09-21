@@ -3,8 +3,8 @@ import { requireAdminUser } from "@/lib/auth/session";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { listErrorLogs, summarizeErrorLogs } from "@/lib/firebase/errorLog";
 import type { ErrorLog } from "@/lib/firebase/schemas";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
@@ -22,10 +22,7 @@ const KINDS = [
 
 const SEVERITIES = ["error", "warning"] as const satisfies readonly ErrorLog["severity"][];
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/admin/errors" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/admin/errors");
 
 function readFilter<T extends string>(value: string | null, allowed: readonly T[]): T | undefined {
   return value && (allowed as readonly string[]).includes(value) ? (value as T) : undefined;

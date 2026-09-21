@@ -61,3 +61,40 @@ describe("getRequestIp", () => {
     expect(getRequestIp(request)).toBe("unknown");
   });
 });
+
+describe("the memory cap must not become a rate-limit bypass", () => {
+  /**
+   * Regression for a pruner that deleted any bucket with
+   * `now - windowStartedAt > 0` — true for every bucket created at least a
+   * millisecond ago, so crossing `MAX_TRACKED_KEYS` flushed live windows
+   * too. Anyone who could grow the map past the cap (rotating source IPs on
+   * an anonymous route is enough) also reset every other caller's counter.
+   */
+  it("keeps an existing caller's window intact when a flood of new keys saturates the map", () => {
+    const victim = `victim:${Math.random()}`;
+    const limit = 2;
+    const windowMs = 60_000;
+
+    expect(checkRateLimit({ key: victim, limit, windowMs }).ok).toBe(true);
+    expect(checkRateLimit({ key: victim, limit, windowMs }).ok).toBe(true);
+    expect(checkRateLimit({ key: victim, limit, windowMs }).ok).toBe(false);
+
+    // Flood well past MAX_TRACKED_KEYS (50_000) with distinct, still-live keys.
+    for (let i = 0; i < 60_000; i++) {
+      checkRateLimit({ key: `flood:${i}`, limit, windowMs });
+    }
+
+    // The victim's window never closed, so it is still refused — its counter
+    // was not reset as a side effect of the flood.
+    expect(checkRateLimit({ key: victim, limit, windowMs }).ok).toBe(false);
+  });
+
+  it("refuses a brand-new key rather than evicting a live one once saturated", () => {
+    // Failing closed is the only option that bounds memory without resetting
+    // somebody's live window; the refusal lands on the flood, not on the
+    // callers already being tracked.
+    const result = checkRateLimit({ key: `overflow:${Math.random()}`, limit: 100, windowMs: 60_000 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("RATE_LIMIT_ERROR");
+  });
+});

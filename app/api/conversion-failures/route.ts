@@ -6,8 +6,8 @@ import { recordConversionFailures } from "@/lib/firebase/conversionFailures";
 import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";
 import { FAILURE_CATEGORIES } from "@/features/converter/engine/classify";
 import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
@@ -16,10 +16,7 @@ export const runtime = "nodejs";
 // session's worth of distinct failures, not enough for a scripted flood.
 const RATE_LIMIT = { limit: 30, windowMs: 5 * 60 * 1000 };
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/conversion-failures" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/conversion-failures");
 
 const occurrenceSchema = z.object({
   sessionId: z.string().min(1).max(100),

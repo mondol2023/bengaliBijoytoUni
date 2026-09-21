@@ -2,15 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminUser } from "@/lib/auth/session";
 import { getAdminOverview } from "@/lib/firebase/adminStats";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/admin/overview" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/admin/overview");
 
 /** Site-wide counters + the last 30 days of activity, for the admin overview charts. Admin-only. */
 export async function GET(request: NextRequest) {

@@ -6,8 +6,8 @@ import { resolveServerTier } from "@/lib/auth/tier";
 import { recordConversion } from "@/lib/firebase/recordActivity";
 import { conversionRecordSchema } from "@/lib/firebase/schemas";
 import { getEncoding } from "@/features/converter/encodings/registry";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
@@ -24,10 +24,7 @@ const bodySchema = z.object({
   error: z.string().nullable(),
 });
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/conversions" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/conversions");
 
 /**
  * Explicit "save to history" for the client-side text converter — the

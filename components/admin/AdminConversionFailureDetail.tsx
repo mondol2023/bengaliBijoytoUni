@@ -65,7 +65,7 @@ function OccurrenceRow({ occurrence }: { occurrence: WithId<ConversionFailure> }
       {occurrence.engineOutput !== null && (
         <div className="rounded-md border border-border bg-surface-muted p-2">
           <p className="mb-1 text-[11px] uppercase tracking-wide text-foreground/50">Engine output (actual)</p>
-          <pre className="font-bengali overflow-x-auto whitespace-pre-wrap break-words text-xs">
+          <pre lang="bn" className="font-bengali overflow-x-auto whitespace-pre-wrap break-words text-xs">
             {occurrence.engineOutput}
           </pre>
         </div>
@@ -86,7 +86,12 @@ function OccurrenceRow({ occurrence }: { occurrence: WithId<ConversionFailure> }
         <div className="flex flex-col gap-2 border-t border-border p-2">
           <div>
             <p className="mb-1 text-[11px] uppercase tracking-wide text-foreground/50">Failed sequence in context</p>
-            <pre className="font-bengali overflow-x-auto whitespace-pre-wrap break-words text-xs">
+            {/* Legacy source bytes, not Bengali: `fullText` and its context
+                windows are the original conversion *input*. Noto Sans Bengali
+                has no glyphs for these Latin-1 code points, so it silently
+                falls back to whatever the system picks — mono renders them
+                predictably, which is the whole point of this panel. */}
+            <pre className="font-mono overflow-x-auto whitespace-pre-wrap break-words text-xs">
               {occurrence.contextBefore}
               <mark className="rounded bg-warning/20 px-0.5">{occurrence.failedSequence}</mark>
               {occurrence.contextAfter}
@@ -94,7 +99,7 @@ function OccurrenceRow({ occurrence }: { occurrence: WithId<ConversionFailure> }
           </div>
           <div>
             <p className="mb-1 text-[11px] uppercase tracking-wide text-foreground/50">Full original text</p>
-            <pre className="font-bengali max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">
+            <pre className="font-mono max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">
               {occurrence.fullText}
             </pre>
           </div>
@@ -147,7 +152,7 @@ function ResolutionCard({
       <div className="rounded-md border border-accent/30 bg-accent-muted/40 p-2">
         <p className="mb-1 text-[11px] uppercase tracking-wide text-accent">AI candidate conversion (unverified)</p>
         {resolution.candidateConversion !== null ? (
-          <pre className="font-bengali overflow-x-auto whitespace-pre-wrap break-words text-sm">
+          <pre lang="bn" className="font-bengali overflow-x-auto whitespace-pre-wrap break-words text-sm">
             {resolution.candidateConversion}
           </pre>
         ) : (
@@ -161,6 +166,7 @@ function ResolutionCard({
           {resolution.alternativeCandidates.map((alternative, index) => (
             <code
               key={index}
+              lang="bn"
               className="font-bengali rounded border border-border bg-surface-muted px-1.5 py-0.5 text-xs"
             >
               {alternative}
@@ -297,7 +303,9 @@ export function AdminConversionFailureDetail({ patternId }: { patternId: string 
           {pattern.encodingId && <Badge tone="neutral">{pattern.encodingId}</Badge>}
           <Badge tone="accent">×{pattern.occurrenceCount.toLocaleString()} occurrences</Badge>
         </div>
-        <p className="font-bengali break-words text-lg text-foreground/90">{pattern.failedSequence}</p>
+        {/* The failed sequence is legacy source bytes — mono, like every other
+            raw byte display in this panel. */}
+        <p className="font-mono break-words text-lg text-foreground/90">{pattern.failedSequence}</p>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground/50">
           <span>engine {pattern.engineVersion}</span>
           <span>first seen {formatDate(pattern.firstSeenAt)}</span>

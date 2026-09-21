@@ -6,15 +6,12 @@ import { writeAuditLog } from "@/lib/firebase/audit";
 import { reviewConversionResolution, REVIEW_DECISIONS } from "@/lib/ai/reviewConversionResolution";
 import { RESOLUTION_LIMITS } from "@/lib/ai/limits";
 import { checkRateLimit } from "@/lib/security/rateLimit";
-import { logAppError, statusForAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, logAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/admin/conversion-failures/[patternId]/review" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/admin/conversion-failures/[patternId]/review");
 
 async function auditSafely(input: Parameters<typeof writeAuditLog>[0]) {
   try {

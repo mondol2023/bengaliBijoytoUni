@@ -4,8 +4,8 @@ import { getServerUser, requireServerUser } from "@/lib/auth/session";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { ERROR_LOG_LIMITS, listErrorLogs, writeErrorLog } from "@/lib/firebase/errorLog";
 import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
@@ -18,10 +18,7 @@ const RECENT_LIMIT = 50;
 // stop a scripted flood, not normal use.
 const RATE_LIMIT = { limit: 60, windowMs: 5 * 60 * 1000 };
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/error-logs" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/error-logs");
 
 const bodySchema = z.object({
   source: z.enum(["text", "file", "comparison"]),

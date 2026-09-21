@@ -20,8 +20,15 @@ export { AUTO_DETECT, type EncodingChoice };
 export interface UseConversionResult {
   inputText: string;
   setInputText: (text: string) => void;
-  /** The (debounced) text that actually produced `output` — not `inputText`, which can be ahead of it while typing. */
-  convertedText: string;
+  /**
+   * The (debounced) *input* that actually produced `output` — not
+   * `inputText`, which can be ahead of it while typing. Named for what it is:
+   * the previous name, `convertedText`, read as "the converted result" in a
+   * codebase whose whole subject is telling legacy input from Unicode output,
+   * and its one consumer passes it as `fullText` — the original conversion
+   * input — to the failure reporter.
+   */
+  settledInputText: string;
   encodingChoice: EncodingChoice;
   setEncodingChoice: (choice: EncodingChoice) => void;
   tier: TierId;
@@ -88,7 +95,7 @@ export function useConversion(initialTier: TierId = "easy"): UseConversionResult
   return {
     inputText,
     setInputText,
-    convertedText: debouncedText,
+    settledInputText: debouncedText,
     encodingChoice,
     setEncodingChoice,
     tier,

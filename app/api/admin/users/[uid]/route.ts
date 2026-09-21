@@ -6,15 +6,12 @@ import { userProfileSchema, usageOverrideSchema, type UsageOverride, type UserPr
 import { recordUserTierChange } from "@/lib/firebase/adminStats";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { DEFAULT_TIER } from "@/features/usage/tierConfig";
-import { logAppError, statusForAppError, toAppError, toSafeResponse } from "@/lib/errors/handlers";
-import { AppErrors, type AppError } from "@/lib/errors/types";
+import { failResponder, logAppError, toAppError } from "@/lib/errors/handlers";
+import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
-function fail(error: AppError) {
-  logAppError(error, { route: "api/admin/users/[uid]" });
-  return NextResponse.json({ ok: false, error: toSafeResponse(error) }, { status: statusForAppError(error) });
-}
+const fail = failResponder("api/admin/users/[uid]");
 
 async function auditSafely(input: Parameters<typeof writeAuditLog>[0]) {
   try {
