@@ -32,6 +32,25 @@ system stops at "candidate," it never writes engine rules itself.
   character(s) does this legacy byte sequence, in this legacy font/encoding, represent" —
   not "translate this text."
 
+### 2.1 AI in the user conversion path (revised, Phase 2)
+
+Recorded here so the documented design and the code agree.
+
+- **There is no live AI call in the user conversion path.** Not "none yet" — none by
+  design. It keeps cost and latency out of the path a user waits on, and the converter is
+  pure and runs locally.
+- A user may be served a **stored** resolution when the converter cannot convert a
+  sequence. By default only `accepted` (human-reviewed) resolutions are served, clearly
+  flagged as a fallback and never presented as authoritative.
+- Unverified AI results are served **only** behind a feature flag that is **off by
+  default**, and are labelled "AI-suggested, unverified".
+
+Consequence for the code: the absence of a provider key is not what keeps AI out of the
+conversion path, so nothing may come to depend on that. A populated `GEMINI_API_KEY` in a
+developer's `.env.local` makes `isConfigured()` true and a real billable call reachable
+from any path that asks for one — the guarantee has to hold in the code and be asserted by
+a test, not rest on an empty env var.
+
 ## 3. Data model
 
 Three new top-level Firestore collections, all server-written only (Admin SDK; client
