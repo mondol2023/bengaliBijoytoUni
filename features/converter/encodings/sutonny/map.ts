@@ -1,6 +1,18 @@
 import type { GlyphRule } from "../types";
 
 /**
+ * ⚠️ RETIRED — UNREFERENCED, PENDING DELETION.
+ *
+ * `../sutonny/index.ts` no longer loads this table; SutonnyMJ now aliases
+ * the Bijoy Classic table, which is the same byte layout under its other
+ * name. This file is kept only so the change can be reviewed and reverted
+ * in one step, and is removed in its own commit once
+ * `__tests__/sutonnyParity.test.ts` has been checked against real SutonnyMJ
+ * samples. Nothing in the app imports it; `sutonnyParity.test.ts` imports it
+ * solely to assert that the live encoding is *not* using it.
+ *
+ * The original header follows.
+ *
  * ⚠️ PROVISIONAL STARTER TABLE — NOT YET VALIDATED.
  *
  * Same caveat as `encodings/bijoy/map.ts`: this is a best-effort, structural
