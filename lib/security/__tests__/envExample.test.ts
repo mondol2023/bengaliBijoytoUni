@@ -78,6 +78,25 @@ const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
   /^(changeme|placeholder|todo|tbd|example|dummy|fake|redacted|unset|none)$/i,
   /^(true|false|\d+)$/i,
   /^https?:\/\/(localhost|127\.0\.0\.1|example\.(com|org))(:\d+)?(\/.*)?$/i,
+  /**
+   * A bare loopback address, with or without a port — the form the Firebase
+   * emulator host variables take (`FIRESTORE_EMULATOR_HOST=127.0.0.1:8080`),
+   * which the scheme-bearing URL pattern above does not cover. An address
+   * that resolves only to this machine cannot be a credential.
+   */
+  /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d{1,5})?$/i,
+  /**
+   * `demo-`-prefixed identifiers, which firebase-tools reserves for fake
+   * projects: `Constants.FAKE_PROJECT_ID_PREFIX = "demo-"` makes the CLI
+   * refuse to contact Google for them, so a value of this shape names
+   * nothing real by construction.
+   *
+   * Deliberately lowercase-only and length-bounded rather than `/i` and
+   * open-ended. Every credential shape below carries uppercase or runs long
+   * (`AIza…`, a PEM block, a JWT), so keeping this narrow means a real key
+   * cannot be smuggled past the guard by prefixing it with `demo-`.
+   */
+  /^demo-[a-z0-9._-]{0,48}$/,
 ];
 
 /** Shapes that are a credential no matter what else the value looks like. */
@@ -144,6 +163,28 @@ describe("Guard A: tracked .env*.example files carry no real values", () => {
     expect(PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(filled[0].value))).toBe(false);
     expect(PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(filled[1].value))).toBe(true);
     expect(SECRET_SHAPES.some(({ pattern }) => pattern.test(filled[0].value))).toBe(true);
+  });
+
+  it("keeps the emulator placeholders narrow enough to still catch a secret", () => {
+    // The two patterns added for `.env.development.local.example` are the
+    // loosest in the list, so their negative cases are asserted directly
+    // rather than left to the files that happen to be tracked today.
+    const accepted = ["127.0.0.1:8080", "localhost", "demo-convert2uni", "demo-convert2uni.firebasestorage.app"];
+    for (const value of accepted) {
+      expect(PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(value)), value).toBe(true);
+    }
+
+    const rejected = [
+      "AIzaSyA1234567890123456789012345678901234",
+      "demo-AIzaSyA1234567890123456789012345678901234",
+      "demo-" + "a".repeat(49),
+      "127.0.0.1:8080/../../real-secret",
+      "localhost.attacker.example.net",
+      "convert2uni-prod",
+    ];
+    for (const value of rejected) {
+      expect(PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(value)), value).toBe(false);
+    }
   });
 
   it("names no value in the message it would fail with", () => {

@@ -9,6 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "emulators": "firebase emulators:start --project demo-convert2uni --only auth,firestore,storage",
+    "dev:emulated": "node scripts/requireEmulatorEnv.mjs && next dev",
     "scan:secrets": "node scripts/secretScan.mjs",
     "scan:secrets:history": "node scripts/secretScan.mjs --history"
   },

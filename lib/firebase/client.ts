@@ -29,6 +29,30 @@ export const isFirebaseConfigured = Boolean(
 );
 
 /**
+ * Whether this browser build should talk to the local emulators
+ * (`docs/dev-environment.md`). Unlike the server, the browser cannot read
+ * `FIRESTORE_EMULATOR_HOST` and the SDK has no equivalent auto-detection, so
+ * each service is redirected by an explicit `connect*Emulator` call below.
+ *
+ * Inlined at build time like every `NEXT_PUBLIC_*` value, so a production
+ * build compiled without it can never take these branches.
+ */
+const useEmulator = process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === "1";
+
+/**
+ * Ports must match `firebase.json`'s `emulators` block. Hard-coded rather
+ * than read from more `NEXT_PUBLIC_*` variables: they are not secrets, not
+ * per-developer, and one list is easier to keep in step with `firebase.json`
+ * than six env vars are.
+ */
+const EMULATOR = {
+  host: "127.0.0.1",
+  authPort: 9099,
+  firestorePort: 8080,
+  storagePort: 9199,
+} as const;
+
+/**
  * Every accessor below is async because the SDK is imported on demand rather
  * than at module scope. `AuthProvider` mounts in the root layout, so a static
  * `firebase/auth` import there put the whole Auth SDK — plus Firestore and
@@ -54,27 +78,45 @@ async function getFirebaseApp(): Promise<FirebaseApp> {
   return app;
 }
 
-/** Lazily initialized — never call unless `isFirebaseConfigured` is true. */
+/**
+ * Lazily initialized — never call unless `isFirebaseConfigured` is true.
+ *
+ * The `connect*Emulator` calls sit inside the same `if (!instance)` block as
+ * construction, so each runs exactly once per instance. Calling one twice on
+ * the same object throws in the Firestore SDK, which is the failure mode
+ * that would otherwise appear only after a fast-refresh.
+ */
 export async function getFirebaseAuth(): Promise<Auth> {
   if (!authInstance) {
-    const { getAuth } = await import("firebase/auth");
+    const { getAuth, connectAuthEmulator } = await import("firebase/auth");
     authInstance = getAuth(await getFirebaseApp());
+    if (useEmulator) {
+      connectAuthEmulator(authInstance, `http://${EMULATOR.host}:${EMULATOR.authPort}`, {
+        disableWarnings: true,
+      });
+    }
   }
   return authInstance;
 }
 
 export async function getFirebaseDb(): Promise<Firestore> {
   if (!dbInstance) {
-    const { getFirestore } = await import("firebase/firestore");
+    const { getFirestore, connectFirestoreEmulator } = await import("firebase/firestore");
     dbInstance = getFirestore(await getFirebaseApp());
+    if (useEmulator) {
+      connectFirestoreEmulator(dbInstance, EMULATOR.host, EMULATOR.firestorePort);
+    }
   }
   return dbInstance;
 }
 
 export async function getFirebaseStorage(): Promise<FirebaseStorage> {
   if (!storageInstance) {
-    const { getStorage } = await import("firebase/storage");
+    const { getStorage, connectStorageEmulator } = await import("firebase/storage");
     storageInstance = getStorage(await getFirebaseApp());
+    if (useEmulator) {
+      connectStorageEmulator(storageInstance, EMULATOR.host, EMULATOR.storagePort);
+    }
   }
   return storageInstance;
 }

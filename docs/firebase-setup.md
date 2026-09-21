@@ -82,3 +82,11 @@ Restart the dev server (env vars are read at process start), then:
 - Uploading a document while signed in should populate `/account`'s "Documents" and "Conversions" lists.
 
 If something doesn't work, check the terminal running `next dev` for a logged `AppError` — server-side failures are logged with `logAppError` (route + safe error code) even though the client only ever sees a safe, generic message.
+
+## 11. Local development without touching this project
+
+Everything above points `npm run dev` at the real project, which means local
+clicks write real rows. To develop against the Firebase Local Emulator Suite
+instead — offline, disposable, and with `firestore.rules` / `storage.rules`
+enforced locally — see [`dev-environment.md`](dev-environment.md). It needs a
+JDK 21+ and no changes to `.env.local`.
