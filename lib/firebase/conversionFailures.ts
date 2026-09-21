@@ -25,6 +25,7 @@ import {
 } from "./schemas";
 import { computeFailurePatternId } from "@/lib/conversionFailures/patternId";
 import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";
+import { retentionFields } from "@/lib/conversionFailures/retention";
 import { countWrites, type WriteOperation } from "./writeMetrics";
 import { logAppError } from "@/lib/errors/handlers";
 
@@ -88,7 +89,8 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
     engineVersion: input.engineVersion,
     failedSequence: input.failedSequence,
   });
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
 
   const occurrenceRef = db.collection(FAILURES_COLLECTION).doc();
   const patternRef = db.collection(PATTERNS_COLLECTION).doc(patternId);
@@ -133,7 +135,10 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
         sampleOccurrenceIds: [occurrenceRef.id],
         status: "open",
       };
-      tx.set(patternRef, failurePatternSchema.parse(pattern));
+      tx.set(patternRef, {
+        ...failurePatternSchema.parse(pattern),
+        ...retentionFields("failurePatterns", nowDate),
+      });
     } else {
       const existing = patternSnap.data() as FailurePattern;
       const sampleOccurrenceIds = [...(existing.sampleOccurrenceIds ?? []), occurrenceRef.id].slice(
@@ -143,10 +148,16 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
         occurrenceCount: FieldValue.increment(occurrenceCount),
         lastSeenAt: now,
         sampleOccurrenceIds,
+        // Sliding window: a pattern still being hit must not expire out from
+        // under the occurrences that keep arriving for it.
+        ...retentionFields("failurePatterns", nowDate),
       });
     }
 
-    tx.set(occurrenceRef, validatedOccurrence);
+    tx.set(occurrenceRef, {
+      ...validatedOccurrence,
+      ...retentionFields("conversionFailures", nowDate),
+    });
   });
 
   // Two document writes per accepted report, whatever the occurrence count

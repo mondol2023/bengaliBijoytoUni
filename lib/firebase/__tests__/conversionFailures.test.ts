@@ -22,6 +22,9 @@ vi.mock("../admin", () => ({ getAdminDb: vi.fn() }));
 import { getAdminDb } from "../admin";
 import { recordConversionFailures, type ConversionFailureInput } from "../conversionFailures";
 import { __resetWriteMetricsForTests, getWriteMetricsSnapshot } from "../writeMetrics";
+import { RETENTION_DAYS } from "@/lib/conversionFailures/retention";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface Increment {
   __increment: number;
@@ -203,5 +206,60 @@ describe("recordConversionFailures: occurrence counts", () => {
     expect(occurrence.fullText).toBe("");
     expect(occurrence.fullTextTruncated).toBe(false);
     expect(occurrence.engineOutput).toBeNull();
+  });
+});
+
+/**
+ * A document written without `expireAt` is one the TTL policy will never
+ * expire, and nothing about it looks wrong — it simply stays forever. So
+ * what is asserted here is that the field reaches the document, on all
+ * three write paths, as a `Date`.
+ */
+describe("recordConversionFailures: retention", () => {
+  let db: ReturnType<typeof createMockDb>;
+
+  beforeEach(() => {
+    db = createMockDb();
+    vi.mocked(getAdminDb).mockReturnValue(db as unknown as ReturnType<typeof getAdminDb>);
+  });
+
+  it("stamps an occurrence with its retention period", async () => {
+    const before = Date.now();
+    await recordConversionFailures([input()]);
+    const [[, occurrence]] = occurrences(db);
+
+    expect(occurrence.expireAt).toBeInstanceOf(Date);
+    const expireAt = (occurrence.expireAt as Date).getTime();
+    expect(expireAt).toBeGreaterThanOrEqual(before + RETENTION_DAYS.conversionFailures * DAY_MS);
+  });
+
+  it("stamps a newly created pattern with its own, longer period", async () => {
+    await recordConversionFailures([input()]);
+    const [[, pattern]] = patterns(db);
+
+    expect(pattern.expireAt).toBeInstanceOf(Date);
+    const [[, occurrence]] = occurrences(db);
+    expect((pattern.expireAt as Date).getTime()).toBeGreaterThan(
+      (occurrence.expireAt as Date).getTime(),
+    );
+  });
+
+  it("pushes an existing pattern's expiry out on every new occurrence", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-09-21T12:00:00.000Z"));
+      await recordConversionFailures([input()]);
+      const first = (patterns(db)[0][1].expireAt as Date).getTime();
+
+      vi.setSystemTime(new Date("2026-09-21T12:01:00.000Z"));
+      await recordConversionFailures([input()]);
+      const second = (patterns(db)[0][1].expireAt as Date).getTime();
+
+      // Without this the aggregate would expire on the schedule of the first
+      // occurrence ever seen, however active the pattern still is.
+      expect(second).toBe(first + 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
