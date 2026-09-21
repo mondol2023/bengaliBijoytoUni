@@ -11,9 +11,10 @@ import { AppErrors } from "@/lib/errors/types";
 
 export const runtime = "nodejs";
 
-// Heavier payloads than `/api/error-logs` (full source text per occurrence),
-// so a tighter ceiling than that route's 60/5min — still enough for a normal
-// session's worth of distinct failures, not enough for a scripted flood.
+// A tighter ceiling than `/api/error-logs`'s 60/5min — still enough for a
+// normal session's worth of distinct failures, not enough for a scripted
+// flood. Payloads are small now that the privacy bound has landed, so this
+// limit is about write volume rather than size.
 const RATE_LIMIT = { limit: 30, windowMs: 5 * 60 * 1000 };
 
 const fail = failResponder("api/conversion-failures");
@@ -29,11 +30,15 @@ const occurrenceSchema = z.object({
   position: z.number().int().nonnegative().nullable(),
   contextBefore: z.string().max(CONVERSION_FAILURE_LIMITS.maxContextLength),
   contextAfter: z.string().max(CONVERSION_FAILURE_LIMITS.maxContextLength),
-  // Capped generously above `maxFullTextLength` here (final truncation with
-  // `fullTextTruncated` happens in `recordConversionFailures`) — this bound
-  // only exists to stop an outright abusive payload from reaching that far.
-  fullText: z.string().max(CONVERSION_FAILURE_LIMITS.maxFullTextLength * 2),
-  engineOutput: z.string().max(CONVERSION_FAILURE_LIMITS.maxFullTextLength * 2).nullable(),
+  // `fullText`/`engineOutput` are no longer collected (privacy bound — see
+  // `lib/conversionFailures/occurrence.ts` and
+  // `docs/conversion-failure-pipeline.md` §6). They stay in the schema as
+  // optional-and-ignored so a stale browser tab running the previous bundle
+  // still gets a 200 instead of a validation error, but whatever it sends is
+  // dropped here and never reaches Firestore. The `.max()` bound still
+  // rejects an abusive payload rather than silently parsing it.
+  fullText: z.string().max(CONVERSION_FAILURE_LIMITS.maxContextLength).optional(),
+  engineOutput: z.string().max(CONVERSION_FAILURE_LIMITS.maxContextLength).nullable().optional(),
   errorCode: z.string().min(1).max(64),
   errorReason: z.string().min(1).max(CONVERSION_FAILURE_LIMITS.maxErrorReasonLength),
   severity: z.enum(["error", "warning"]),
@@ -49,10 +54,10 @@ const bodySchema = z.object({
  * Records the distinct-pattern occurrences from one client-side conversion
  * attempt. Deliberately open to anonymous callers, like `/api/error-logs` —
  * `userId` is taken from the verified token when there is one and is null
- * otherwise, never read from the request body. No GET here: unlike
- * `errorLogs`, these rows carry the complete original conversion text, so
- * even a signed-in caller cannot read their own back — only
- * `/api/admin/conversion-failures/*` can, matching `firestore.rules`.
+ * otherwise, never read from the request body. No GET here: these rows are
+ * cross-user diagnostic aggregates, so even a signed-in caller cannot read
+ * their own back — only `/api/admin/conversion-failures/*` can, matching
+ * `firestore.rules`.
  */
 export async function POST(request: NextRequest) {
   if (!isFirebaseAdminConfigured) {
@@ -98,8 +103,8 @@ export async function POST(request: NextRequest) {
         position: item.position,
         contextBefore: item.contextBefore,
         contextAfter: item.contextAfter,
-        fullText: item.fullText,
-        engineOutput: item.engineOutput,
+        // Deliberately not forwarded — see the schema comment above.
+        engineOutput: null,
         errorCode: item.errorCode,
         errorReason: item.errorReason,
         severity: item.severity,

@@ -81,13 +81,13 @@ function OccurrenceRow({ occurrence }: { occurrence: WithId<ConversionFailure> }
 
       <details className="rounded-md border border-border bg-surface-muted">
         <summary className="cursor-pointer select-none px-2 py-1.5 text-xs font-medium text-foreground/70">
-          Context{occurrence.fullTextTruncated ? " (full text truncated)" : ""}
+          Context{occurrence.fullTextTruncated ? " (legacy full text truncated)" : ""}
         </summary>
         <div className="flex flex-col gap-2 border-t border-border p-2">
           <div>
             <p className="mb-1 text-[11px] uppercase tracking-wide text-foreground/50">Failed sequence in context</p>
-            {/* Legacy source bytes, not Bengali: `fullText` and its context
-                windows are the original conversion *input*. Noto Sans Bengali
+            {/* Legacy source bytes, not Bengali: these context windows are
+                slices of the original conversion *input*. Noto Sans Bengali
                 has no glyphs for these Latin-1 code points, so it silently
                 falls back to whatever the system picks — mono renders them
                 predictably, which is the whole point of this panel. */}
@@ -97,12 +97,19 @@ function OccurrenceRow({ occurrence }: { occurrence: WithId<ConversionFailure> }
               {occurrence.contextAfter}
             </pre>
           </div>
-          <div>
-            <p className="mb-1 text-[11px] uppercase tracking-wide text-foreground/50">Full original text</p>
-            <pre className="font-mono max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">
-              {occurrence.fullText}
-            </pre>
-          </div>
+          {/* Only occurrences recorded before the privacy bound carry this;
+              nothing collects the whole input any more, so new rows have an
+              empty string here and render just the window above. */}
+          {occurrence.fullText !== "" && (
+            <div>
+              <p className="mb-1 text-[11px] uppercase tracking-wide text-foreground/50">
+                Full original text (legacy record)
+              </p>
+              <pre className="font-mono max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">
+                {occurrence.fullText}
+              </pre>
+            </div>
+          )}
         </div>
       </details>
     </li>

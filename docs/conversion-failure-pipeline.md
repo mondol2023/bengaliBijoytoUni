@@ -41,8 +41,16 @@ writes are never permitted, matching every existing collection in this app):
 
 Never merged, never deduplicated away — every occurrence is retained (per the hard
 requirement that failures are ground-truth observations, not noise to collapse). Analogous
-to `errorLogs` but deliberately richer and admin-only, because it carries full document
-text.
+to `errorLogs` but deliberately richer and admin-only, because it aggregates diagnostic
+context across users.
+
+> **Privacy bound (Phase 2).** An occurrence carries the failed sequence plus a bounded
+> context window either side of it, and no other user content. The original implementation
+> shipped the entire conversion input in `fullText` and the entire converted result in
+> `engineOutput`; both are now uncollected. `lib/conversionFailures/occurrence.ts` is the
+> single builder both capture paths use, so the bound cannot drift between them, and
+> `POST /api/conversion-failures` drops these fields even when a stale client still sends
+> them. See §6.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -55,11 +63,11 @@ text.
 | `failureCategory` | enum | `unmapped_character \| invalid_encoding \| reorder_defect \| normalization_warning \| conversion_exception \| document_extraction_failure \| unknown` (§17 taxonomy). |
 | `failedSequence` | `string` | The **exact** legacy sequence, byte-for-byte/char-for-char as received. Never trimmed, normalized, or replaced. |
 | `codePoints` | `number[]` | `Array.from(failedSequence).map(c => c.codePointAt(0))` — computed, never invented. |
-| `position` | `number \| null` | Character offset of the failure within `fullText`. |
-| `contextBefore` / `contextAfter` | `string` | Bounded windows (`MAX_CONTEXT_LENGTH`) around the failure — usable without loading `fullText`. |
-| `fullText` | `string` | The complete original conversion input, capped at `MAX_FULLTEXT_LENGTH` for Firestore's 1 MiB/doc ceiling. |
-| `fullTextTruncated` | `boolean` | True if `fullText` was capped. |
-| `engineOutput` | `string \| null` | The engine's actual (imperfect) output for this conversion. |
+| `position` | `number \| null` | Character offset of the failure within the original input. |
+| `contextBefore` / `contextAfter` | `string` | Bounded windows (`CONTEXT_WINDOW_CHARS`, capped by `maxContextLength`) around the failure. The only user content an occurrence carries. |
+| `fullText` | `string` | **Retired.** Always `""` on documents written since the privacy bound; retained in the schema so pre-bound occurrences still parse on read. |
+| `fullTextTruncated` | `boolean` | **Retired.** Always `false` on new documents. |
+| `engineOutput` | `string \| null` | **Retired.** Always `null` on new documents. |
 | `errorCode` | `string` | e.g. an `AppErrorCode`, or a pipeline-internal code for warnings that aren't `AppError`s. |
 | `errorReason` | `string` | Human-readable. |
 | `severity` | `"error" \| "warning"` | Matches existing severity concept. |
@@ -149,10 +157,17 @@ both rather than adding a third path:
    `hooks/useIssueLog.ts`) posts detailed occurrences to `POST /api/conversion-failures`
    once per distinct pattern per session — fire-and-forget, `keepalive: true`, never blocks
    the UI, exactly like `lib/log/reportIssue.ts` already does for `errorLogs`.
-2. **Document upload (server-side).** `app/api/documents/extract/route.ts` already has
-   `fullText` and `validation.unmappedDetails` in memory after `convertDocument()`. It calls
-   the new repo function directly — no HTTP round trip — right next to its existing
+2. **Document upload (server-side).** `app/api/documents/extract/route.ts` already has the
+   extracted text and `validation.unmappedDetails` in memory after `convertDocument()`. It
+   calls the repo function directly — no HTTP round trip — right next to its existing
    `capture()` call for `errorLogs`.
+
+Both paths build their payload with `buildFailureOccurrence()` from
+`lib/conversionFailures/occurrence.ts`. That function reads the source text only to slice
+the context window; the text itself never enters the returned object, so neither path can
+persist a whole document even by accident. Regression coverage:
+`lib/conversionFailures/limits.test.ts` (builder) and
+`app/api/conversion-failures/route.test.ts` (route).
 
 In both cases, persistence is **best-effort and asynchronous relative to the conversion
 result**: a Firestore outage never blocks or corrupts the conversion the user is looking at.

@@ -24,7 +24,6 @@ import {
   type AiResolution,
 } from "./schemas";
 import { computeFailurePatternId } from "@/lib/conversionFailures/patternId";
-import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";
 import { logAppError } from "@/lib/errors/handlers";
 
 const FAILURES_COLLECTION = "conversionFailures";
@@ -36,20 +35,18 @@ const MAX_SAMPLE_OCCURRENCE_IDS = 5;
 
 export type WithId<T> = T & { id: string };
 
+/**
+ * `fullText`/`fullTextTruncated` are absent by construction: callers cannot
+ * supply the user's whole document any more, because nothing collects it (see
+ * `lib/conversionFailures/occurrence.ts`). The two fields remain in
+ * `conversionFailureSchema` so occurrences written before this bound existed
+ * still parse on read; new documents always get the empty values written in
+ * `recordOne`.
+ */
 export type ConversionFailureInput = Omit<
   ConversionFailure,
-  "createdAt" | "patternId" | "codePoints" | "fullTextTruncated"
+  "createdAt" | "patternId" | "codePoints" | "fullText" | "fullTextTruncated"
 >;
-
-function truncateFullText(fullText: string): { fullText: string; fullTextTruncated: boolean } {
-  if (fullText.length <= CONVERSION_FAILURE_LIMITS.maxFullTextLength) {
-    return { fullText, fullTextTruncated: false };
-  }
-  return {
-    fullText: fullText.slice(0, CONVERSION_FAILURE_LIMITS.maxFullTextLength),
-    fullTextTruncated: true,
-  };
-}
 
 /** Computed, never invented — the exact code points of the exact failed sequence. */
 export function codePointsOf(sequence: string): number[] {
@@ -74,7 +71,6 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
     engineVersion: input.engineVersion,
     failedSequence: input.failedSequence,
   });
-  const { fullText, fullTextTruncated } = truncateFullText(input.fullText);
   const now = new Date().toISOString();
 
   const occurrenceRef = db.collection(FAILURES_COLLECTION).doc();
@@ -82,8 +78,8 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
 
   const occurrence: ConversionFailure = {
     ...input,
-    fullText,
-    fullTextTruncated,
+    fullText: "",
+    fullTextTruncated: false,
     codePoints: codePointsOf(input.failedSequence),
     patternId,
     createdAt: now,

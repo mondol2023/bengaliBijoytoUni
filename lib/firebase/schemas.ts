@@ -206,11 +206,13 @@ const failureCategorySchema = z.enum(FAILURE_CATEGORIES);
  * One document per individual conversion failure occurrence — never merged,
  * never deduplicated away (that's what `failurePatterns` is for). Deliberately
  * richer than `errorLogSchema` and admin-only-readable (see `firestore.rules`)
- * because it carries the complete original conversion input.
+ * because it aggregates diagnostic context across users.
  *
- * `failedSequence`/`fullText` are stored exactly as received — never trimmed,
- * normalized, or replaced — so a persisted row is real evidence a mapping
- * rule can be fixed from, not a lossy summary of one.
+ * `failedSequence` and the context window are stored exactly as received —
+ * never trimmed, normalized, or replaced — so a persisted row is real
+ * evidence a mapping rule can be fixed from, not a lossy summary of one.
+ * They are also the *only* user content a row carries; see the privacy bound
+ * in `lib/conversionFailures/occurrence.ts`.
  */
 export const conversionFailureSchema = z.object({
   userId: z.string().nullable(),
@@ -226,9 +228,14 @@ export const conversionFailureSchema = z.object({
   position: z.number().int().nonnegative().nullable(),
   contextBefore: z.string(),
   contextAfter: z.string(),
-  /** The complete original conversion input, capped at `MAX_FULLTEXT_LENGTH`. */
+  /**
+   * Retained so occurrences written before the privacy bound still parse on
+   * read. Always `""`/`false` on documents written since — nothing collects
+   * the whole input any more (`lib/conversionFailures/occurrence.ts`).
+   */
   fullText: z.string(),
   fullTextTruncated: z.boolean(),
+  /** Likewise retained for old documents; always null on new ones. */
   engineOutput: z.string().nullable(),
   errorCode: z.string().min(1),
   errorReason: z.string().min(1),

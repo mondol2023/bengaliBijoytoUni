@@ -90,7 +90,7 @@ export function ConverterWorkspace() {
   );
 
   useConversionFailureReporter(
-    { source: "text", encodingId: resolvedEncodingId ?? null, fullText: settledInputText },
+    { source: "text", encodingId: resolvedEncodingId ?? null, sourceText: settledInputText },
     output,
   );
 

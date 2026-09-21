@@ -2,22 +2,18 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
-import type { ConversionOutput, UnmappedDetail } from "@/features/converter/engine/pipeline";
-
-/**
- * Characters of the original input shown either side of a failed sequence in
- * `contextBefore`/`contextAfter`. Independent of `validate.ts`'s
- * `CONTEXT_TOKENS` (which windows *tokens* of converted output for the
- * in-app log) — this windows *characters* of the original legacy text, since
- * that's what a human fixing the mapping table needs to see.
- */
-const CONTEXT_WINDOW_CHARS = 80;
+import { buildFailureOccurrence } from "@/lib/conversionFailures/occurrence";
+import type { ConversionOutput } from "@/features/converter/engine/pipeline";
 
 export interface ConversionFailureReportContext {
   source: "text" | "file" | "comparison" | "api";
   encodingId: string | null;
-  /** The complete original conversion input — sent to `/api/conversion-failures`, never to an AI provider. */
-  fullText: string;
+  /**
+   * The complete original conversion input. Read locally to slice the context
+   * window around each failed sequence and **never sent anywhere** — see the
+   * privacy bound in `lib/conversionFailures/occurrence.ts`.
+   */
+  sourceText: string;
   fileName?: string | null;
   fileType?: string | null;
 }
@@ -26,47 +22,15 @@ function patternKey(encodingId: string | null, engineVersion: string, sequence: 
   return `${encodingId ?? ""}|${engineVersion}|${sequence}`;
 }
 
-function buildOccurrence(
-  context: ConversionFailureReportContext,
-  output: ConversionOutput,
-  detail: UnmappedDetail,
-) {
-  const position = detail.positions[0] ?? null;
-  const contextBefore =
-    position === null ? "" : context.fullText.slice(Math.max(0, position - CONTEXT_WINDOW_CHARS), position);
-  const contextAfter =
-    position === null
-      ? ""
-      : context.fullText.slice(
-          position + detail.sequence.length,
-          position + detail.sequence.length + CONTEXT_WINDOW_CHARS,
-        );
-
-  return {
-    source: context.source,
-    encodingId: context.encodingId,
-    engineVersion: output.engineVersion,
-    rulesHash: output.rulesHash,
-    failureCategory: "unmapped_character" as const,
-    failedSequence: detail.sequence,
-    position,
-    contextBefore,
-    contextAfter,
-    fullText: context.fullText,
-    engineOutput: output.unicodeText,
-    errorCode: "UNMAPPED_CHARACTER",
-    errorReason: `"${detail.sequence}" occurred ${detail.count} time(s) with no mapping rule in this encoding.`,
-    severity: "warning" as const,
-    fileName: context.fileName ?? null,
-    fileType: context.fileType ?? null,
-  };
-}
-
 /**
- * Posts detailed, full-context occurrences to `/api/conversion-failures` for
- * the conversion-failure intelligence pipeline (see
- * `docs/conversion-failure-pipeline.md`) — separate from `useIssueLog`, which
- * feeds the lightweight, real-time `errorLogs` feed and stays untouched.
+ * Posts occurrences to `/api/conversion-failures` for the conversion-failure
+ * intelligence pipeline (see `docs/conversion-failure-pipeline.md`) —
+ * separate from `useIssueLog`, which feeds the lightweight, real-time
+ * `errorLogs` feed and stays untouched.
+ *
+ * Each report carries the failed sequence plus a bounded context window and
+ * nothing more; `buildFailureOccurrence` owns that bound and the server
+ * discards anything wider.
  *
  * Scoped to `unmapped_character` failures only: those are the ones with a
  * clear failed sequence and position a human can act on to fix a mapping
@@ -100,7 +64,21 @@ export function useConversionFailureReporter(
       reportedPatterns.current.add(patternKey(context.encodingId, output.engineVersion, detail.sequence));
     }
 
-    const failures = unseen.map((detail) => ({ ...buildOccurrence(context, output, detail), sessionId }));
+    const failures = unseen.map((detail) => ({
+      ...buildFailureOccurrence(
+        {
+          source: context.source,
+          encodingId: context.encodingId,
+          engineVersion: output.engineVersion,
+          rulesHash: output.rulesHash,
+          fileName: context.fileName,
+          fileType: context.fileType,
+        },
+        context.sourceText,
+        detail,
+      ),
+      sessionId,
+    }));
 
     void (async () => {
       try {
@@ -118,12 +96,13 @@ export function useConversionFailureReporter(
         // Intentionally silent — see the module doc.
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reportedPatterns/sessionId are refs/stable; context fields listed individually below
+    // `context` is a fresh object literal each render, so its fields are
+    // listed individually rather than depending on the object identity.
   }, [
     output,
     context.source,
     context.encodingId,
-    context.fullText,
+    context.sourceText,
     context.fileName,
     context.fileType,
     sessionId,

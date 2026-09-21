@@ -6,8 +6,14 @@
  * `lib/feedback/limits.ts`'s split for the same reason.
  */
 export const CONVERSION_FAILURE_LIMITS = {
-  /** Firestore caps a document at 1 MiB; this leaves headroom for the rest of the fields. */
-  maxFullTextLength: 200_000,
+  /**
+   * The widest context window the API will accept either side of a failed
+   * sequence. `CONTEXT_WINDOW_CHARS` in `./occurrence.ts` is what reporters
+   * actually send and must stay at or under this; `./limits.test.ts` asserts
+   * that. Since the privacy bound landed this is also the ceiling on any
+   * user-content field in the payload — there is no longer a whole-document
+   * field to cap.
+   */
   maxContextLength: 200,
   maxFailedSequenceLength: 200,
   maxErrorReasonLength: 500,

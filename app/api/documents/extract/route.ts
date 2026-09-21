@@ -17,6 +17,7 @@ import { resolveServerLimits } from "@/lib/auth/tier";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { captureServerIssue } from "@/lib/firebase/errorLog";
 import { captureConversionFailures } from "@/lib/firebase/conversionFailures";
+import { buildFailureOccurrence } from "@/lib/conversionFailures/occurrence";
 import type { ErrorLog } from "@/lib/firebase/schemas";
 import { recordConversion, recordDocumentUpload } from "@/lib/firebase/recordActivity";
 import { getSystemConfigSafe } from "@/lib/firebase/systemConfig";
@@ -32,9 +33,6 @@ export const runtime = "nodejs";
 const RATE_LIMIT = { limit: 20, windowMs: 5 * 60 * 1000 };
 
 const fail = failResponder("api/documents/extract");
-
-/** Mirrors `hooks/useConversionFailureReporter.ts`'s window size — see that module's doc for why. */
-const CONTEXT_WINDOW_CHARS = 80;
 
 /**
  * Records a document failure in the persisted error log. Unlike the
@@ -224,41 +222,31 @@ export async function POST(request: NextRequest) {
       samples: validation.unmappedSequences,
     });
 
-    // The deeper, admin-only dataset (docs/conversion-failure-pipeline.md) —
-    // `text` (the full extracted document) is already in memory here, so
-    // this is the same round trip as `capture()` above, not an extra one.
+    // The deeper, admin-only dataset (docs/conversion-failure-pipeline.md).
+    // `text` is read only to slice each failed sequence's context window
+    // (`buildFailureOccurrence` enforces that bound); the extracted document
+    // itself is never persisted here.
     // Awaited like every other write on this path, for the same
     // serverless-freeze reason `capture()`'s doc comment explains.
     const sessionId = randomUUID();
     await captureConversionFailures(
-      validation.unmappedDetails.map((detail) => {
-        const position = detail.positions[0] ?? null;
-        return {
-          userId: user?.uid ?? null,
-          sessionId,
-          source: "file" as const,
-          encodingId: conversion.value.encodingId,
-          engineVersion: conversion.value.engineVersion,
-          rulesHash: conversion.value.rulesHash,
-          failureCategory: "unmapped_character" as const,
-          failedSequence: detail.sequence,
-          position,
-          contextBefore:
-            position === null ? "" : text.slice(Math.max(0, position - CONTEXT_WINDOW_CHARS), position),
-          contextAfter:
-            position === null
-              ? ""
-              : text.slice(position + detail.sequence.length, position + detail.sequence.length + CONTEXT_WINDOW_CHARS),
-          fullText: text,
-          engineOutput: conversion.value.unicodeText,
-          errorCode: "UNMAPPED_CHARACTER",
-          errorReason: `"${detail.sequence}" occurred ${detail.count} time(s) with no mapping rule in this encoding.`,
-          severity: "warning" as const,
-          fileName: file.name,
-          fileType,
-          route: "api/documents/extract",
-        };
-      }),
+      validation.unmappedDetails.map((detail) => ({
+        ...buildFailureOccurrence(
+          {
+            source: "file",
+            encodingId: conversion.value.encodingId,
+            engineVersion: conversion.value.engineVersion,
+            rulesHash: conversion.value.rulesHash,
+            fileName: file.name,
+            fileType,
+          },
+          text,
+          detail,
+        ),
+        userId: user?.uid ?? null,
+        sessionId,
+        route: "api/documents/extract",
+      })),
       "api/documents/extract",
     );
   }
