@@ -24,6 +24,7 @@ vi.mock("@/lib/security/rateLimit", () => ({
 }));
 
 import { recordConversionFailures } from "@/lib/firebase/conversionFailures";
+import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";
 import { POST } from "./route";
 
 const occurrence = {
@@ -99,5 +100,73 @@ describe("POST /api/conversion-failures", () => {
 
     const [recorded] = vi.mocked(recordConversionFailures).mock.calls[0][0];
     expect(recorded.userId).toBeNull();
+  });
+});
+
+/**
+ * A batched report moves an aggregate by more than one, so the count is now
+ * an input worth validating rather than an implied 1.
+ */
+describe("POST /api/conversion-failures: batched counts", () => {
+  beforeEach(() => {
+    vi.mocked(recordConversionFailures).mockClear();
+  });
+
+  it("forwards the reported count", async () => {
+    await POST(makeRequest({ failures: [{ ...occurrence, occurrenceCount: 47 }] }));
+    const [recorded] = vi.mocked(recordConversionFailures).mock.calls[0][0];
+    expect(recorded.occurrenceCount).toBe(47);
+  });
+
+  it("defaults to one when a pre-batching client omits it", async () => {
+    await POST(makeRequest({ failures: [occurrence] }));
+    const [recorded] = vi.mocked(recordConversionFailures).mock.calls[0][0];
+    expect(recorded.occurrenceCount).toBe(1);
+  });
+
+  it("rejects a count above the ceiling rather than clamping it silently", async () => {
+    const response = await POST(
+      makeRequest({
+        failures: [{ ...occurrence, occurrenceCount: CONVERSION_FAILURE_LIMITS.maxOccurrenceCount + 1 }],
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(recordConversionFailures).not.toHaveBeenCalled();
+  });
+
+  it("rejects a count that is zero, negative, or fractional", async () => {
+    for (const occurrenceCount of [0, -1, 1.5]) {
+      vi.mocked(recordConversionFailures).mockClear();
+      const response = await POST(makeRequest({ failures: [{ ...occurrence, occurrenceCount }] }));
+      expect(response.status, `occurrenceCount=${occurrenceCount}`).toBe(400);
+      expect(recordConversionFailures).not.toHaveBeenCalled();
+    }
+  });
+
+  it("accepts a full batch of distinct patterns in one request", async () => {
+    const failures = Array.from({ length: CONVERSION_FAILURE_LIMITS.maxFailuresPerReport }, (_, i) => ({
+      ...occurrence,
+      failedSequence: `seq-${i}`,
+      occurrenceCount: i + 1,
+    }));
+    const response = await POST(makeRequest({ failures }));
+
+    expect(response.status).toBe(200);
+    // One request, not one per pattern — the point of batching.
+    expect(recordConversionFailures).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(recordConversionFailures).mock.calls[0][0]).toHaveLength(
+      CONVERSION_FAILURE_LIMITS.maxFailuresPerReport,
+    );
+  });
+
+  it("still refuses a batch larger than one request may carry", async () => {
+    const failures = Array.from({ length: CONVERSION_FAILURE_LIMITS.maxFailuresPerReport + 1 }, (_, i) => ({
+      ...occurrence,
+      failedSequence: `seq-${i}`,
+    }));
+    const response = await POST(makeRequest({ failures }));
+
+    expect(response.status).toBe(400);
+    expect(recordConversionFailures).not.toHaveBeenCalled();
   });
 });

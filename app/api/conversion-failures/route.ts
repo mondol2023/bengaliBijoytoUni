@@ -30,6 +30,18 @@ const occurrenceSchema = z.object({
   position: z.number().int().nonnegative().nullable(),
   contextBefore: z.string().max(CONVERSION_FAILURE_LIMITS.maxContextLength),
   contextAfter: z.string().max(CONVERSION_FAILURE_LIMITS.maxContextLength),
+  /**
+   * How many occurrences this entry stands for. Optional so a stale tab
+   * running the pre-batching bundle still validates, and bounded because it
+   * moves an aggregate: the rate limit caps how often a caller can report,
+   * this caps how far one report can move a count.
+   */
+  occurrenceCount: z
+    .number()
+    .int()
+    .min(1)
+    .max(CONVERSION_FAILURE_LIMITS.maxOccurrenceCount)
+    .optional(),
   // `fullText`/`engineOutput` are no longer collected (privacy bound — see
   // `lib/conversionFailures/occurrence.ts` and
   // `docs/conversion-failure-pipeline.md` §6). They stay in the schema as
@@ -109,6 +121,7 @@ export async function POST(request: NextRequest) {
         position: item.position,
         contextBefore: item.contextBefore,
         contextAfter: item.contextAfter,
+        occurrenceCount: item.occurrenceCount ?? 1,
         // Deliberately not forwarded — see the schema comment above.
         engineOutput: null,
         errorCode: item.errorCode,

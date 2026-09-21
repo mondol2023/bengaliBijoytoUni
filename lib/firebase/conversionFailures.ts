@@ -24,6 +24,7 @@ import {
   type AiResolution,
 } from "./schemas";
 import { computeFailurePatternId } from "@/lib/conversionFailures/patternId";
+import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";
 import { logAppError } from "@/lib/errors/handlers";
 
 const FAILURES_COLLECTION = "conversionFailures";
@@ -45,8 +46,14 @@ export type WithId<T> = T & { id: string };
  */
 export type ConversionFailureInput = Omit<
   ConversionFailure,
-  "createdAt" | "patternId" | "codePoints" | "fullText" | "fullTextTruncated"
->;
+  "createdAt" | "patternId" | "codePoints" | "fullText" | "fullTextTruncated" | "occurrenceCount"
+> & {
+  /**
+   * How many occurrences this entry stands for. Omitted means one, which is
+   * what every caller written before batching meant.
+   */
+  occurrenceCount?: number;
+};
 
 /** Computed, never invented — the exact code points of the exact failed sequence. */
 export function codePointsOf(sequence: string): number[] {
@@ -56,9 +63,18 @@ export function codePointsOf(sequence: string): number[] {
 }
 
 /**
- * Persists one occurrence and upserts its `failurePatterns` aggregate in a
- * single transaction, so `occurrenceCount` can never drift from the number of
- * occurrence documents that actually reference the pattern. The pattern's doc
+ * Persists one occurrence document and upserts its `failurePatterns`
+ * aggregate in a single transaction, so the aggregate can never drift from
+ * the occurrences that were actually accepted.
+ *
+ * Note the unit. Since reports are batched
+ * (`lib/conversionFailures/reportBuffer.ts`), a document stands for
+ * `occurrenceCount` occurrences and the pattern is incremented by that
+ * number — so `occurrenceCount` counts occurrences while the document count
+ * counts batches. Before batching the two were equal, and the earlier
+ * wording here promised they always would be; keeping that promise would
+ * have meant either writing one document per occurrence or leaving the
+ * aggregate counting sessions instead of occurrences. The pattern's doc
  * ID is a deterministic content hash (`computeFailurePatternId`), not a
  * read-then-write lookup, so concurrent occurrences of the same failure never
  * race into two pattern documents — Firestore's transaction retry handles
@@ -76,8 +92,16 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
   const occurrenceRef = db.collection(FAILURES_COLLECTION).doc();
   const patternRef = db.collection(PATTERNS_COLLECTION).doc(patternId);
 
+  // Clamped rather than trusted: this number now moves an aggregate by more
+  // than one, and the caller is ultimately an anonymous browser.
+  const occurrenceCount = Math.min(
+    Math.max(1, Math.floor(input.occurrenceCount ?? 1)),
+    CONVERSION_FAILURE_LIMITS.maxOccurrenceCount,
+  );
+
   const occurrence: ConversionFailure = {
     ...input,
+    occurrenceCount,
     fullText: "",
     fullTextTruncated: false,
     codePoints: codePointsOf(input.failedSequence),
@@ -95,7 +119,7 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
         engineVersion: input.engineVersion,
         failedSequence: input.failedSequence,
         failureCategory: input.failureCategory,
-        occurrenceCount: 1,
+        occurrenceCount,
         firstSeenAt: now,
         lastSeenAt: now,
         sampleOccurrenceIds: [occurrenceRef.id],
@@ -108,7 +132,7 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
         -MAX_SAMPLE_OCCURRENCE_IDS,
       );
       tx.update(patternRef, {
-        occurrenceCount: FieldValue.increment(1),
+        occurrenceCount: FieldValue.increment(occurrenceCount),
         lastSeenAt: now,
         sampleOccurrenceIds,
       });

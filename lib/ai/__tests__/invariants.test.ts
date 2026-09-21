@@ -146,6 +146,7 @@ function makeOccurrence(): ConversionFailure {
     failureCategory: "unmapped_character",
     failedSequence: FAILED_SEQUENCE,
     codePoints: [65, 118],
+    occurrenceCount: 1,
     position: 12,
     contextBefore: "before",
     contextAfter: "after",

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { buildFailureOccurrence, buildSignalOccurrence } from "@/lib/conversionFailures/occurrence";
+import { createReportBuffer, type BufferedReport } from "@/lib/conversionFailures/reportBuffer";
 import type { ConversionOutput } from "@/features/converter/engine/pipeline";
 
 export interface ConversionFailureReportContext {
@@ -15,6 +16,13 @@ export interface ConversionFailureReportContext {
 function patternKey(encodingId: string | null, engineVersion: string, sequence: string): string {
   return `${encodingId ?? ""}|${engineVersion}|${sequence}`;
 }
+
+/**
+ * How long a delta may sit unsent. Long enough that a burst of debounced
+ * conversions collapses into one request, short enough that a user who
+ * closes the tab a few seconds after pasting is still counted.
+ */
+const FLUSH_DELAY_MS = 5_000;
 
 /**
  * Posts occurrences to `/api/conversion-failures` for the conversion-failure
@@ -38,10 +46,21 @@ function patternKey(encodingId: string | null, engineVersion: string, sequence: 
  * inventing an identifier for them — they continue to surface only through
  * the existing `errorLogs` feed via `useIssueLog`.
  *
- * Reports at most once per distinct `(encodingId, engineVersion, sequence)`
- * pattern per mount (cost control, mirrors `reportIssue.ts`'s "only the
- * first occurrence" rule) and is strictly fire-and-forget — a failed report
- * never surfaces to the user, who is not looking at this pipeline at all.
+ * ## Batching
+ *
+ * Occurrences accumulate in a `ReportBuffer` and are sent as count deltas:
+ * one request saying a pattern occurred forty-seven more times, rather than
+ * one request per occurrence — or, as this hook used to behave, one report
+ * per pattern per mount regardless of how many times it actually occurred.
+ * That old rule made `occurrenceCount` a count of sessions wearing the name
+ * of a count of occurrences; see `reportBuffer.ts` for what replaced it and
+ * why the replacement is monotone.
+ *
+ * Flushes on a short timer, when the buffer fills, when the page is hidden,
+ * and on unmount — the last three matter because a user who pastes a
+ * document and immediately closes the tab is exactly the case worth
+ * counting. Strictly fire-and-forget throughout: a failed report never
+ * surfaces to the user, who is not looking at this pipeline at all.
  */
 export function useConversionFailureReporter(
   context: ConversionFailureReportContext,
@@ -49,7 +68,80 @@ export function useConversionFailureReporter(
 ): void {
   const { user, getIdToken } = useAuth();
   const sessionId = useMemo(() => crypto.randomUUID(), []);
-  const reportedPatterns = useRef(new Set<string>());
+
+  // Read inside the sender rather than captured in the buffer's closure, so
+  // a token that arrives after the buffer was created is still used. Updated
+  // in an effect, never during render.
+  const authRef = useRef({ user, getIdToken });
+  useEffect(() => {
+    authRef.current = { user, getIdToken };
+  }, [user, getIdToken]);
+
+  const send = useCallback(
+    async (items: BufferedReport[]) => {
+      const failures = items.map((item) => ({
+        ...item.occurrence,
+        occurrenceCount: item.occurrenceCount,
+        sessionId,
+      }));
+      try {
+        const { user: currentUser, getIdToken: currentGetIdToken } = authRef.current;
+        const idToken = currentUser ? await currentGetIdToken() : null;
+        await fetch("/api/conversion-failures", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+          },
+          body: JSON.stringify({ failures }),
+          // Survives the navigation that a pagehide flush is racing.
+          keepalive: true,
+        });
+      } catch {
+        // Intentionally silent — see the module doc.
+      }
+    },
+    [sessionId],
+  );
+
+  // One buffer for the life of the hook, created on first use from inside an
+  // effect or a handler — never during render, where reading a ref is both
+  // lint-flagged and genuinely wrong under concurrent rendering. Its identity
+  // must be stable: recreating it would lose the high-water marks and count
+  // occurrences the user has already been credited with a second time.
+  const bufferRef = useRef<ReturnType<typeof createReportBuffer> | null>(null);
+  const getBuffer = useCallback(() => {
+    bufferRef.current ??= createReportBuffer({ flush: send });
+    return bufferRef.current;
+  }, [send]);
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushNow = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    void getBuffer().flushNow();
+  }, [getBuffer]);
+
+  // One set of listeners for the life of the hook. `pagehide` rather than
+  // `unload`, which is ignored by browsers that keep pages in the back/
+  // forward cache; `visibilitychange` catches a tab switched away from and
+  // never returned to, which `pagehide` on its own can miss.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") flushNow();
+    };
+    window.addEventListener("pagehide", flushNow);
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      window.removeEventListener("pagehide", flushNow);
+      document.removeEventListener("visibilitychange", onHidden);
+      flushNow();
+    };
+  }, [flushNow]);
 
   useEffect(() => {
     if (!output) return;
@@ -65,46 +157,35 @@ export function useConversionFailureReporter(
       fileType: context.fileType,
     };
 
-    // The per-mount dedup key spans both kinds, so an ambiguous byte and an
-    // unmapped byte with the same sequence are still reported separately.
-    const isUnseen = (kind: string, sequence: string) =>
-      !reportedPatterns.current.has(patternKey(context.encodingId, output.engineVersion, `${kind}:${sequence}`));
-    const markSeen = (kind: string, sequence: string) =>
-      reportedPatterns.current.add(patternKey(context.encodingId, output.engineVersion, `${kind}:${sequence}`));
+    // The key spans both kinds, so an ambiguous byte and an unmapped byte
+    // with the same sequence stay separate patterns.
+    const keyFor = (kind: string, sequence: string) =>
+      patternKey(context.encodingId, output.engineVersion, `${kind}:${sequence}`);
 
-    const failures = [
-      ...unmappedDetails
-        .filter((detail) => isUnseen("unmapped", detail.sequence))
-        .map((detail) => {
-          markSeen("unmapped", detail.sequence);
-          return buildFailureOccurrence(meta, output.sourceText, detail);
-        }),
-      ...sourceSignals
-        .filter((signal) => isUnseen("ambiguous", signal.sequence))
-        .map((signal) => {
-          markSeen("ambiguous", signal.sequence);
-          return buildSignalOccurrence(meta, output.sourceText, signal);
-        }),
-    ].map((occurrence) => ({ ...occurrence, sessionId }));
+    const buffer = getBuffer();
+    let buffered = 0;
+    for (const detail of unmappedDetails) {
+      buffered += buffer.record(
+        keyFor("unmapped", detail.sequence),
+        buildFailureOccurrence(meta, output.sourceText, detail),
+        detail.count,
+      );
+    }
+    for (const signal of sourceSignals) {
+      buffered += buffer.record(
+        keyFor("ambiguous", signal.sequence),
+        buildSignalOccurrence(meta, output.sourceText, signal),
+        signal.count,
+      );
+    }
 
-    if (failures.length === 0) return;
+    if (buffered === 0) return;
 
-    void (async () => {
-      try {
-        const idToken = user ? await getIdToken() : null;
-        await fetch("/api/conversion-failures", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
-          },
-          body: JSON.stringify({ failures }),
-          keepalive: true,
-        });
-      } catch {
-        // Intentionally silent — see the module doc.
-      }
-    })();
+    if (timerRef.current !== null) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      void buffer.flushNow();
+    }, FLUSH_DELAY_MS);
     // `context` is a fresh object literal each render, so its fields are
     // listed individually rather than depending on the object identity.
   }, [
@@ -113,8 +194,6 @@ export function useConversionFailureReporter(
     context.encodingId,
     context.fileName,
     context.fileType,
-    sessionId,
-    user,
-    getIdToken,
+    getBuffer,
   ]);
 }

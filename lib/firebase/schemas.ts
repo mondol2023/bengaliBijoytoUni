@@ -229,6 +229,20 @@ export const conversionFailureSchema = z.object({
   contextBefore: z.string(),
   contextAfter: z.string(),
   /**
+   * How many real occurrences this document stands for.
+   *
+   * Since reports are batched into count deltas
+   * (`lib/conversionFailures/reportBuffer.ts`), one document is a *sample*
+   * of a run of occurrences rather than one occurrence. The pattern's
+   * `occurrenceCount` is incremented by this number, so the aggregate stays
+   * a count of occurrences while the number of documents written stays a
+   * count of batches.
+   *
+   * `.default(1)` because every document written before batching existed
+   * represented exactly one occurrence, which is what it now reads back as.
+   */
+  occurrenceCount: z.number().int().positive().default(1),
+  /**
    * Retained so occurrences written before the privacy bound still parse on
    * read. Always `""`/`false` on documents written since — nothing collects
    * the whole input any more (`lib/conversionFailures/occurrence.ts`).

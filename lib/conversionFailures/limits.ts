@@ -17,6 +17,17 @@ export const CONVERSION_FAILURE_LIMITS = {
   maxContextLength: 200,
   maxFailedSequenceLength: 200,
   maxErrorReasonLength: 500,
-  /** Occurrences accepted in one `/api/conversion-failures` POST — one request per conversion attempt. */
+  /** Distinct patterns accepted in one `/api/conversion-failures` POST — one request per flushed batch. */
   maxFailuresPerReport: 50,
+  /**
+   * Ceiling on the `occurrenceCount` delta one batch entry may claim.
+   *
+   * A batched report tells the server how many times a pattern occurred
+   * rather than that it occurred, which means an anonymous caller can now
+   * move an aggregate by more than one per request. The rate limit bounds how
+   * often; this bounds how far. 1000 is far above any real document's count
+   * for a single failed sequence and far below a number that could bury a
+   * genuine pattern in the ranking.
+   */
+  maxOccurrenceCount: 1000,
 } as const;

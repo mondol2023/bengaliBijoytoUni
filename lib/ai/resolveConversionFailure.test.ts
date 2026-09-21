@@ -128,6 +128,7 @@ function makeOccurrence(overrides: Partial<WithId<ConversionFailure>> = {}): Wit
     failureCategory: "unmapped_character",
     failedSequence: "�",
     codePoints: [0xfffd],
+    occurrenceCount: 1,
     position: 10,
     contextBefore: "before-context",
     contextAfter: "after-context",
