@@ -58,6 +58,12 @@ const bodySchema = z.object({
  * cross-user diagnostic aggregates, so even a signed-in caller cannot read
  * their own back — only `/api/admin/conversion-failures/*` can, matching
  * `firestore.rules`.
+ *
+ * `GET /api/conversion-failures/known` is not an exception to that. It reads
+ * no occurrence row and publishes no stored document: three fields per
+ * *pattern* (the short failed sequence, its category, whether it is
+ * resolved), which is strictly less than this endpoint already accepts from
+ * an anonymous caller.
  */
 export async function POST(request: NextRequest) {
   if (!isFirebaseAdminConfigured) {

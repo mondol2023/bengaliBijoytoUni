@@ -145,16 +145,30 @@ export async function captureConversionFailures(
   }
 }
 
+/**
+ * `lastSeenAt` answers "what is happening now", `occurrenceCount` answers
+ * "what is worth fixing" — a pattern seen thirty seconds ago once outranks a
+ * pattern seen this morning nine hundred times under the first and is
+ * outranked under the second. Both are legitimate; neither is a default that
+ * serves the other's question.
+ */
+export type FailurePatternOrder = "lastSeenAt" | "occurrenceCount";
+
 export interface ListFailurePatternsOptions {
   limit: number;
   encodingId?: string;
   failureCategory?: FailurePattern["failureCategory"];
   status?: FailurePattern["status"];
+  /** Defaults to `lastSeenAt`, preserving the behavior every existing caller relies on. */
+  orderBy?: FailurePatternOrder;
 }
 
 /**
- * Most-recently-active-first listing. Every filter combination used here is
- * backed by a composite index in `firestore.indexes.json`.
+ * Descending by whichever field `orderBy` names. Every filter/order
+ * combination used here is backed by a composite index in
+ * `firestore.indexes.json` — an unindexed combination fails at query time
+ * with a `FAILED_PRECONDITION`, not silently, so adding a filter means adding
+ * the matching index in the same commit.
  */
 export async function listFailurePatterns(
   options: ListFailurePatternsOptions,
@@ -164,7 +178,10 @@ export async function listFailurePatterns(
   if (options.failureCategory) query = query.where("failureCategory", "==", options.failureCategory);
   if (options.status) query = query.where("status", "==", options.status);
 
-  const snapshot = await query.orderBy("lastSeenAt", "desc").limit(options.limit).get();
+  const snapshot = await query
+    .orderBy(options.orderBy ?? "lastSeenAt", "desc")
+    .limit(options.limit)
+    .get();
   return snapshot.docs.flatMap((doc) => {
     const parsed = failurePatternSchema.safeParse(doc.data());
     return parsed.success ? [{ id: doc.id, ...parsed.data }] : [];

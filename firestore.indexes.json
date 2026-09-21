@@ -115,6 +115,14 @@
       ]
     },
     {
+      "collectionGroup": "failurePatterns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "encodingId", "order": "ASCENDING" },
+        { "fieldPath": "occurrenceCount", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "aiResolutions",
       "queryScope": "COLLECTION",
       "fields": [
