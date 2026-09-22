@@ -136,6 +136,12 @@ describe("Guard B: only one chain reaches a provider", () => {
  */
 const CONVERSION_PATH_ROOTS = [
   "features/converter",
+  // Named individually as well as covered by the directory above. The
+  // directory catches an import added inside them; naming the paths catches
+  // the other move -- one of them relocating out from under the scan, which
+  // a directory root cannot notice.
+  "features/converter/runConversion.ts",
+  "features/converter/resolutionSource.ts",
   "features/documents",
   "lib/conversionFailures",
   "hooks/useConversion.ts",
@@ -153,7 +159,9 @@ describe("Guard B: the conversion path never imports lib/ai", () => {
     }
   });
 
-  const conversionPathFiles = CONVERSION_PATH_ROOTS.flatMap((root) => {
+  // De-duplicated: a file named individually above is also reached through
+  // its directory, and an offender should be reported once.
+  const conversionPathFiles = [...new Set(CONVERSION_PATH_ROOTS.flatMap((root) => {
     const full = path.join(REPO_ROOT, root);
     let isDirectory = false;
     try {
@@ -162,10 +170,16 @@ describe("Guard B: the conversion path never imports lib/ai", () => {
       return [];
     }
     return isDirectory ? listShippedSources(full) : [full];
-  });
+  }))];
 
   it("has conversion-path files to check", () => {
     expect(conversionPathFiles.length).toBeGreaterThan(10);
+  });
+
+  it("includes the fallback entry point by name", () => {
+    const scanned = conversionPathFiles.map(repoRelative);
+    expect(scanned).toContain("features/converter/runConversion.ts");
+    expect(scanned).toContain("features/converter/resolutionSource.ts");
   });
 
   it("finds no import of lib/ai from any of them", () => {
