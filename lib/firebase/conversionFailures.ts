@@ -26,6 +26,7 @@ import {
 import { computeFailurePatternId } from "@/lib/conversionFailures/patternId";
 import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";
 import { retentionFields } from "@/lib/conversionFailures/retention";
+import { statusCorrectionOnOccurrence } from "@/lib/conversionFailures/reverify";
 import { countWrites, type WriteOperation } from "./writeMetrics";
 import { logAppError } from "@/lib/errors/handlers";
 
@@ -144,10 +145,21 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
       const sampleOccurrenceIds = [...(existing.sampleOccurrenceIds ?? []), occurrenceRef.id].slice(
         -MAX_SAMPLE_OCCURRENCE_IDS,
       );
+      // Opportunistic re-verification. The server re-runs the current engine
+      // over the sequence it already stored; the caller has no say. Written
+      // only when it disagrees with what is stored, so an unchanged verdict
+      // costs nothing. Never a delete -- see `reverify.ts`.
+      const correctedStatus = statusCorrectionOnOccurrence({
+        encodingId: existing.encodingId,
+        failedSequence: existing.failedSequence,
+        engineVersion: existing.engineVersion,
+        status: existing.status,
+      });
       tx.update(patternRef, {
         occurrenceCount: FieldValue.increment(occurrenceCount),
         lastSeenAt: now,
         sampleOccurrenceIds,
+        ...(correctedStatus === null ? {} : { status: correctedStatus }),
         // Sliding window: a pattern still being hit must not expire out from
         // under the occurrences that keep arriving for it.
         ...retentionFields("failurePatterns", nowDate),

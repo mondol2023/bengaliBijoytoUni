@@ -263,3 +263,64 @@ describe("recordConversionFailures: retention", () => {
     }
   });
 });
+
+/**
+ * The opportunistic half of "who decides resolved". The verdict comes from
+ * re-running the engine over the sequence the server already stored — the
+ * report that triggered it contributes the timing and nothing else.
+ */
+describe("recordConversionFailures: opportunistic re-verification", () => {
+  let db: ReturnType<typeof createMockDb>;
+
+  beforeEach(() => {
+    db = createMockDb();
+    vi.mocked(getAdminDb).mockReturnValue(db as unknown as ReturnType<typeof getAdminDb>);
+  });
+
+  /** A sequence no Bijoy rule matches, so the engine still fails on it. */
+  const UNMAPPED = "\u00a4";
+
+  it("leaves a genuinely open pattern open", async () => {
+    await recordConversionFailures([input({ failedSequence: UNMAPPED })]);
+    await recordConversionFailures([input({ failedSequence: UNMAPPED })]);
+    const [[, pattern]] = patterns(db);
+    expect(pattern.status).toBe("open");
+  });
+
+  it("re-opens a pattern that was marked resolved while the engine still fails", async () => {
+    await recordConversionFailures([input({ failedSequence: UNMAPPED })]);
+    const [[key, pattern]] = patterns(db);
+    db.store.set(key, { ...pattern, status: "resolved" });
+
+    await recordConversionFailures([input({ failedSequence: UNMAPPED })]);
+    expect(db.store.get(key)?.status).toBe("open");
+  });
+
+  it("resolves a pattern the table has since grown a rule for", async () => {
+    // "Av" is a live Bijoy rule, so a stored pattern for it converts now.
+    await recordConversionFailures([input({ failedSequence: "Av" })]);
+    const [[key]] = patterns(db);
+    expect(db.store.get(key)?.status).toBe("open");
+
+    await recordConversionFailures([input({ failedSequence: "Av" })]);
+    expect(db.store.get(key)?.status).toBe("resolved");
+  });
+
+  it("never deletes the pattern or its occurrences", async () => {
+    await recordConversionFailures([input({ failedSequence: "Av" })]);
+    await recordConversionFailures([input({ failedSequence: "Av" })]);
+    expect(patterns(db)).toHaveLength(1);
+    expect(occurrences(db)).toHaveLength(2);
+  });
+
+  it("takes no status from the caller", async () => {
+    // `status` is not a field of ConversionFailureInput; passing one anyway
+    // must not reach the pattern.
+    await recordConversionFailures([input({ failedSequence: UNMAPPED })]);
+    await recordConversionFailures([
+      { ...input({ failedSequence: UNMAPPED }), status: "resolved" } as ConversionFailureInput,
+    ]);
+    const [[, pattern]] = patterns(db);
+    expect(pattern.status).toBe("open");
+  });
+});
