@@ -126,4 +126,3 @@ At the end of each phase, give me:
 3. **Assumptions and open questions**
 4. **Risks / follow-ups**
 
-Begin with **Phase 0 and Phase 1 only**, then wait for my approval.
