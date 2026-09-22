@@ -106,10 +106,53 @@ Doc ID = deterministic `sha256("{encodingId}|{engineVersion}|{failedSequence}")`
 | `engineVersion` | `string` | |
 | `failedSequence` | `string` | |
 | `failureCategory` | enum | |
-| `occurrenceCount` | `number` | `FieldValue.increment(1)` per new occurrence. |
+| `occurrenceCount` | `number` | `FieldValue.increment(n)`, where `n` is the batch's claimed count clamped to `CONVERSION_FAILURE_LIMITS.maxOccurrenceCount`. **The unit changed** — see §3.2.1. |
 | `firstSeenAt` / `lastSeenAt` | `string` (ISO) | |
 | `sampleOccurrenceIds` | `string[]` | Small capped list (e.g. 5) of recent `conversionFailures` doc IDs, for quick admin preview without a second query. |
 | `status` | `"open" \| "resolved"` | Set to `resolved` only by an explicit admin action once a mapping-rule fix has shipped (manual, out of scope for this system to automate). |
+
+### 3.2.1 `occurrenceCount` changed unit at `620aacd` — do not compare across it
+
+**Commit `620aacd`, 2026-09-21, `feat(reporting): batch failure reports as
+count deltas, fixing an existing bias`.** Before it, one unit of
+`occurrenceCount` was *one browser session that hit the failure at least
+once*, however many times the sequence occurred in that session: the reporter
+sent each distinct pattern at most once per mount, so a document containing
+one unmapped sequence nine hundred times incremented the aggregate by one.
+After it, one unit is *one occurrence*, counted as the high-water mark seen in
+a single conversion, per pattern per session (`lib/conversionFailures/reportBuffer.ts`),
+with the per-entry delta clamped to `maxOccurrenceCount` (1000) in both
+`lib/conversionFailures/limits.ts` and the writer.
+
+Three consequences worth stating plainly:
+
+1. **A trend line that crosses the change is not a trend.** The number rises
+   at the boundary because the unit shrank, not because failures became more
+   common. Anything ranked by `occurrenceCount` — "most frequent" in the
+   admin list, and the top-N selection in the known-patterns snapshot — ranks
+   old and new patterns against each other on different scales until the old
+   rows age out.
+2. **The document count and the aggregate no longer agree.** A
+   `conversionFailures` document now stands for `occurrenceCount`
+   occurrences, so documents count batches and the aggregate counts
+   occurrences. The earlier invariant comment in `lib/firebase/conversionFailures.ts`
+   promised they could never drift; it now says what is true.
+3. **The new unit still understates.** The high-water mark is monotone and
+   cannot be inflated by editing, and it is deliberately lower than a sum over
+   re-conversions, which would overcount by orders of magnitude because the
+   converter re-runs on every debounced keystroke.
+
+There is no per-row marker for which rule produced a given count, and
+backfilling one is not possible — the information was never recorded. The
+boundary is therefore a date, not a field, which is why it is stated here and
+shown in the admin UI rather than left to be inferred.
+
+`lib/conversionFailures/countingChange.ts` holds this as constants and is
+what the admin UI renders; `__tests__/countingChange.test.ts` fails if that
+copy drifts from the clamp or from this file. **`620aacd` is on
+`feat/font-conversion-hardening` and not on `main`**, so every stored count
+at the time of writing is still the old unit; the UI says so, and
+`COUNTING_CHANGE_SHIPPED` in that module is the flag to flip on merge.
 
 ### 3.3 `aiResolutions` — candidate fixes, never overwriting the original
 

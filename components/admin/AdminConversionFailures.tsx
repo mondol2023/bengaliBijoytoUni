@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
+import { OccurrenceCountNote } from "@/components/admin/OccurrenceCountNote";
 import { ANY_FILTER, DEFAULT_SORT, useAdminConversionFailures } from "@/hooks/useAdminConversionFailures";
 import { FAILURE_CATEGORIES, type FailureCategory } from "@/features/converter/engine/classify";
 
@@ -101,9 +102,13 @@ export function AdminConversionFailures() {
           <p className="text-xs uppercase tracking-wide text-foreground/50">Patterns</p>
           <p className="mt-1 text-2xl font-semibold">{summary.totalPatterns.toLocaleString()}</p>
         </div>
+        {/* The counting note rides on this tile rather than on the header:
+            it is a caveat about this number, and the three tiles beside it
+            are unaffected by the change. */}
         <div className="rounded-lg border border-border bg-surface p-4">
           <p className="text-xs uppercase tracking-wide text-foreground/50">Occurrences</p>
           <p className="mt-1 text-2xl font-semibold">{summary.totalOccurrences.toLocaleString()}</p>
+          <OccurrenceCountNote className="mt-2" />
         </div>
         <div className="rounded-lg border border-border bg-surface p-4">
           <p className="text-xs uppercase tracking-wide text-foreground/50">Open</p>

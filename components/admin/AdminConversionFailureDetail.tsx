@@ -6,6 +6,7 @@ import { ArrowLeft, RefreshCw, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { CATEGORY_LABELS, formatDate } from "@/components/admin/AdminConversionFailures";
+import { OccurrenceCountNote } from "@/components/admin/OccurrenceCountNote";
 import { useConversionFailureDetail, type ReviewDecision } from "@/hooks/useConversionFailureDetail";
 import { SUPPORTED_PROVIDER_IDS, type ProviderId } from "@/lib/ai/types";
 import { RESOLUTION_LIMITS } from "@/lib/ai/limits";
@@ -310,6 +311,10 @@ export function AdminConversionFailureDetail({ patternId }: { patternId: string 
           {pattern.encodingId && <Badge tone="neutral">{pattern.encodingId}</Badge>}
           <Badge tone="accent">×{pattern.occurrenceCount.toLocaleString()} occurrences</Badge>
         </div>
+        {/* Shown here too, not only on the list: this is the page someone
+            reads before deciding a pattern is worth an AI call, and that
+            decision is made on this number. */}
+        <OccurrenceCountNote />
         {/* The failed sequence is legacy source bytes — mono, like every other
             raw byte display in this panel. */}
         <p className="font-mono break-words text-lg text-foreground/90">{pattern.failedSequence}</p>
