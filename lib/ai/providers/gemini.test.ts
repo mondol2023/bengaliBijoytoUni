@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversionResolutionRequest } from "../types";
+import { CONVERSION_RESOLUTION_PROMPT_VERSION } from "../promptBuilder";
 
 const baseRequest: ConversionResolutionRequest = {
   encodingId: "legacy-bangla-font-x",
@@ -73,7 +74,7 @@ describe("geminiProvider", () => {
     if (result.ok) {
       expect(result.value.provider).toBe("gemini");
       expect(result.value.candidateConversion).toBe("কখগ");
-      expect(result.value.promptVersion).toBe("v1");
+      expect(result.value.promptVersion).toBe(CONVERSION_RESOLUTION_PROMPT_VERSION);
       expect(result.value.engineVersion).toBe(baseRequest.engineVersion);
     }
   });

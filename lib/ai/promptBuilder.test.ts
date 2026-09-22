@@ -22,7 +22,10 @@ describe("buildResolutionPrompt", () => {
   it("is stamped with the current prompt version", () => {
     const prompt = buildResolutionPrompt(baseRequest);
     expect(prompt.promptVersion).toBe(CONVERSION_RESOLUTION_PROMPT_VERSION);
-    expect(prompt.promptVersion).toBe("v1");
+    // v2 is the fenced prompt: user text moved from JSON-quoted values into
+    // nonce-delimited data blocks, which is a wording change a stored
+    // resolution has to be able to be read against.
+    expect(prompt.promptVersion).toBe("v2");
   });
 
   it("includes the failed sequence and its code points formatted as U+XXXX", () => {
@@ -71,10 +74,14 @@ describe("buildResolutionPrompt", () => {
     expect(prompt.userPrompt).toContain("the entire document body");
   });
 
-  it("preserves special characters (quotes, backslashes, newlines) safely via JSON encoding", () => {
-    const request: ConversionResolutionRequest = { ...baseRequest, failedSequence: 'a"b\\c\nd' };
-    const prompt = buildResolutionPrompt(request);
-    expect(prompt.userPrompt).toContain(JSON.stringify('a"b\\c\nd'));
+  it("carries quotes, backslashes and newlines through the fence unchanged", () => {
+    // The sequence is legacy bytes, and a quote or a backslash can be one of
+    // them. Since v2 it goes in raw rather than JSON-escaped, so the model
+    // sees the actual characters — the fence, not the quoting, is what keeps
+    // it separate from the instructions.
+    const awkward = 'a"b\\c\nd';
+    const prompt = buildResolutionPrompt({ ...baseRequest, failedSequence: awkward }, {}, { nonce: () => "n1" });
+    expect(prompt.userPrompt).toContain(`<<SEQUENCE:n1>>\n${awkward}\n<</SEQUENCE:n1>>`);
   });
 
   it("handles Bengali script text without corruption", () => {
@@ -87,8 +94,8 @@ describe("buildResolutionPrompt", () => {
   it("truncates very long fullText to the configured limit", () => {
     const longText = "x".repeat(RESOLUTION_LIMITS.maxPromptFullTextLength + 5_000);
     const request: ConversionResolutionRequest = { ...baseRequest, fullText: longText };
-    const prompt = buildResolutionPrompt(request, { includeFullText: true });
-    const embedded = /Full source text[^:]*: "(x+)"/.exec(prompt.userPrompt);
+    const prompt = buildResolutionPrompt(request, { includeFullText: true }, { nonce: () => "n1" });
+    const embedded = /<<FULL_TEXT:n1>>\n(x+)\n<<\/FULL_TEXT:n1>>/.exec(prompt.userPrompt);
     expect(embedded).not.toBeNull();
     expect(embedded![1].length).toBeLessThanOrEqual(RESOLUTION_LIMITS.maxPromptFullTextLength);
   });
@@ -96,8 +103,8 @@ describe("buildResolutionPrompt", () => {
   it("truncates very long context to the configured limit", () => {
     const longContext = "y".repeat(RESOLUTION_LIMITS.maxPromptContextLength + 1_000);
     const request: ConversionResolutionRequest = { ...baseRequest, contextBefore: longContext };
-    const prompt = buildResolutionPrompt(request, { includeContext: true });
-    const embedded = /Context before: "(y+)"/.exec(prompt.userPrompt);
+    const prompt = buildResolutionPrompt(request, { includeContext: true }, { nonce: () => "n1" });
+    const embedded = /<<CONTEXT_BEFORE:n1>>\n(y+)\n<<\/CONTEXT_BEFORE:n1>>/.exec(prompt.userPrompt);
     expect(embedded).not.toBeNull();
     expect(embedded![1].length).toBeLessThanOrEqual(RESOLUTION_LIMITS.maxPromptContextLength);
   });

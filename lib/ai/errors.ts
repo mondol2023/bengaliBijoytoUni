@@ -20,6 +20,7 @@ export type ProviderErrorCode =
   | "provider_unavailable"
   | "provider_invalid_response"
   | "provider_content_rejected"
+  | "provider_budget_exhausted"
   | "provider_unknown_error";
 
 export interface ProviderError {
@@ -104,6 +105,18 @@ export const ProviderErrors = {
       provider,
       message: `"${provider}" declined to process this content.`,
       debug,
+    };
+  },
+  /**
+   * The deployment's daily call budget is spent (`lib/ai/costCap.ts`). Not
+   * about any one provider, so `provider` is null — switching providers must
+   * not be a way around it.
+   */
+  budgetExhausted(limit: number, day: string): ProviderError {
+    return {
+      code: "provider_budget_exhausted",
+      provider: null,
+      message: `This deployment's daily limit of ${limit} AI calls is used up for ${day} (UTC).`,
     };
   },
   unknown(provider: ProviderId, debug?: unknown): ProviderError {

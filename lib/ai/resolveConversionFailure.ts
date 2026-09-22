@@ -35,12 +35,23 @@ import {
   summarizeRejections,
   validateCandidateResolution,
 } from "../conversionFailures/resolutionValidator";
+import { dailyCallBudget } from "./costCap";
+import { createInFlightMap } from "./inFlight";
+import { withProviderRetry } from "./retry";
 import type { ConversionResolutionRequest, ProviderId, ResolutionOptions } from "./types";
 import type { ProviderError } from "./errors";
 import { AppErrors, type AppError, type Result } from "../errors/types";
 import { logAppError } from "../errors/handlers";
 
 const AI_RESOLUTIONS_COLLECTION = "aiResolutions";
+
+/**
+ * One attempt per resolution key at a time, in this process. The Firestore
+ * claim below already stops two processes paying twice; this stops an admin
+ * double-clicking from turning a request that was about to succeed into a
+ * 409 for themselves. See `lib/ai/inFlight.ts`.
+ */
+const inFlight = createInFlightMap<Result<ResolveConversionFailureOutput>>();
 
 export interface ResolveConversionFailureInput {
   readonly patternId: string;
@@ -100,6 +111,10 @@ function mapProviderErrorToAppError(error: ProviderError): AppError {
     // providers exist, matching the check's placement in `registry.ts`.
     case "provider_disabled":
       return AppErrors.notFound(error.message);
+    // 429 with the other throttles: an admin who waits gets served, which is
+    // what a rate-limit status means and what the UI already handles.
+    case "provider_budget_exhausted":
+      return AppErrors.rateLimit(error.message, { details: { retryAfterSeconds: 3_600 } });
     case "provider_not_configured":
     case "provider_authentication_failed":
     case "provider_timeout":
@@ -228,6 +243,17 @@ async function claimResolutionSlot(
 export async function resolveConversionFailure(
   input: ResolveConversionFailureInput,
 ): Promise<Result<ResolveConversionFailureOutput>> {
+  // Keyed on everything that makes two attempts the same attempt — the same
+  // six fields as the Firestore document id, minus the two (`engineVersion`,
+  // `rulesHash`) that are only known after the pattern is read. Two requests
+  // that agree on these and are in flight together are the same request.
+  const key = [input.patternId, input.providerId, input.includeContext, input.includeFullText].join("|");
+  return inFlight.run(key, () => runResolution(input));
+}
+
+async function runResolution(
+  input: ResolveConversionFailureInput,
+): Promise<Result<ResolveConversionFailureOutput>> {
   const providerResult = getResolutionProvider(input.providerId);
   if (!providerResult.ok) {
     return { ok: false, error: mapProviderErrorToAppError(providerResult.error) };
@@ -322,7 +348,22 @@ export async function resolveConversionFailure(
     };
   }
 
-  const providerCallResult = await provider.resolve(request, options);
+  // Reserved after the slot is claimed, so a request refused as a duplicate
+  // or returned from an existing completed resolution never spends a unit —
+  // those paths return above this line. From here the call always happens,
+  // which is why nothing releases the reservation: a provider call that
+  // failed still consumed a request.
+  const reservation = dailyCallBudget.reserve();
+  if (!reservation.ok) {
+    return { ok: false, error: mapProviderErrorToAppError(reservation.error) };
+  }
+
+  // Retries are bounded and only for failures that are about the moment
+  // rather than about the request (`lib/ai/retry.ts`). They share the one
+  // reserved unit deliberately: a retry is the same call, not a new one, and
+  // charging for each attempt would make a flaky network eat the day's
+  // budget.
+  const providerCallResult = await withProviderRetry(() => provider.resolve(request, options));
 
   if (!providerCallResult.ok) {
     const failedRecord: AiResolution = {

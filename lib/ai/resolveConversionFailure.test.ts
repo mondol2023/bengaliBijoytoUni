@@ -745,3 +745,111 @@ describe("resolveConversionFailure — the validator gate before storing", () =>
     expect(persisted(mockDb)?.candidateConversion).toBe("আ");
   });
 });
+
+/**
+ * Phase 4 item 7, at the seam rather than in the unit tests: that the daily
+ * budget, the retry policy and the in-flight de-duplicator are actually
+ * wired into the one path that spends money. The provider is a mock in every
+ * case — **no test here calls an external API.**
+ */
+describe("resolveConversionFailure — the spend controls", () => {
+  function arrangeProvider(resolve: ConversionResolutionProvider["resolve"]) {
+    const provider = makeProvider({ resolve });
+    vi.mocked(getResolutionProvider).mockReturnValue(providerOk(provider));
+    vi.mocked(getFailurePatternDetail).mockResolvedValue(makeDetail(makePattern(), [makeOccurrence()]));
+    vi.mocked(getAdminDb).mockReturnValue(asFirestore(createMockDb()));
+    return provider;
+  }
+
+  it("refuses the call when the day's budget is spent, before reaching the provider", async () => {
+    vi.stubEnv("AI_DAILY_CALL_BUDGET", "0");
+    const provider = arrangeProvider(vi.fn());
+
+    const result = await resolveConversionFailure(baseInput);
+
+    expect(provider.resolve).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    // A throttle, not a fault: waiting is the remedy.
+    expect(result.error.code).toBe("RATE_LIMIT_ERROR");
+    vi.unstubAllEnvs();
+  });
+
+  it("does not spend budget on a resolution that was already completed", async () => {
+    // The dedup path returns before the reservation, so an exhausted budget
+    // must not stop an admin reading an answer that is already paid for.
+    vi.stubEnv("AI_DAILY_CALL_BUDGET", "0");
+    const provider = makeProvider({ resolve: vi.fn() });
+    vi.mocked(getResolutionProvider).mockReturnValue(providerOk(provider));
+    vi.mocked(getFailurePatternDetail).mockResolvedValue(makeDetail(makePattern(), [makeOccurrence()]));
+    const existing = makePendingRecord({ status: "completed", candidateConversion: "আ" });
+    vi.mocked(getAdminDb).mockReturnValue(
+      asFirestore(createMockDb({ seed: { [`${AI_RESOLUTIONS_COLLECTION}/${defaultKey()}`]: existing } })),
+    );
+
+    const result = await resolveConversionFailure(baseInput);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.reused).toBe(true);
+    expect(provider.resolve).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+
+  it("retries a timeout and keeps the success that follows", async () => {
+    const resolve = vi
+      .fn()
+      .mockResolvedValueOnce(providerErr(ProviderErrors.timeout("gemini")))
+      .mockResolvedValueOnce(providerOk(makeSuccessfulResolution()));
+    arrangeProvider(resolve);
+
+    const result = await resolveConversionFailure(baseInput);
+
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(result.ok).toBe(true);
+  });
+
+  it("does not retry a failure that is about the request", async () => {
+    const resolve = vi.fn().mockResolvedValue(providerErr(ProviderErrors.authenticationFailed("gemini")));
+    arrangeProvider(resolve);
+
+    await resolveConversionFailure(baseInput);
+
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it("collapses two concurrent identical requests into one provider call", async () => {
+    // What this prevents is an admin double-clicking and being shown a 409
+    // for a request that was about to succeed.
+    let release!: () => void;
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    const resolve = vi.fn(async () => {
+      await gate;
+      return providerOk(makeSuccessfulResolution());
+    });
+    arrangeProvider(resolve);
+
+    const first = resolveConversionFailure(baseInput);
+    const second = resolveConversionFailure(baseInput);
+    release();
+    const [a, b] = await Promise.all([first, second]);
+
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    expect(a).toStrictEqual(b);
+  });
+
+  it("keeps requests for different patterns apart", async () => {
+    const resolve = vi.fn(async () => providerOk(makeSuccessfulResolution()));
+    arrangeProvider(resolve);
+
+    await Promise.all([
+      resolveConversionFailure(baseInput),
+      resolveConversionFailure({ ...baseInput, providerId: "openai" }),
+    ]);
+
+    expect(resolve).toHaveBeenCalledTimes(2);
+  });
+});
