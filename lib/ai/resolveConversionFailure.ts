@@ -31,6 +31,10 @@ import { CONVERSION_RESOLUTION_PROMPT_VERSION } from "./promptBuilder";
 import { mapResolutionConfidence } from "./confidenceMapping";
 import { RESOLUTION_LIMITS } from "./limits";
 import { computeResolutionLookupKey } from "../conversionFailures/resolutionLookup";
+import {
+  summarizeRejections,
+  validateCandidateResolution,
+} from "../conversionFailures/resolutionValidator";
 import type { ConversionResolutionRequest, ProviderId, ResolutionOptions } from "./types";
 import type { ProviderError } from "./errors";
 import { AppErrors, type AppError, type Result } from "../errors/types";
@@ -343,6 +347,52 @@ export async function resolveConversionFailure(
   }
 
   const resolution = providerCallResult.value;
+
+  // The first of the validator's two runs (Phase 4 item 4; the second is on
+  // the serving side). A candidate that cannot pass is not stored as a
+  // candidate at all: leaving it `completed` would put it in the admin review
+  // queue, and the whole point of the queue is that a human reading it is the
+  // last check, not the first. Only the rejection *codes* are persisted —
+  // never the provider text that failed, which is the same rule the failed
+  // path above follows.
+  //
+  // `candidateConversion: null` is a provider saying "I don't know", which is
+  // a legitimate completed record and not something to validate. A pattern
+  // with no `encodingId` fails closed instead: there is no rule table to
+  // check the output against, so there is no way to store it honestly.
+  const validation =
+    resolution.candidateConversion === null
+      ? null
+      : validateCandidateResolution({
+          encodingId: pattern.encodingId ?? "",
+          failedSequence: pattern.failedSequence,
+          candidateConversion: resolution.candidateConversion,
+        });
+  if (validation && !validation.valid) {
+    const rejectedRecord: AiResolution = {
+      ...pendingRecord,
+      ...claim.carried,
+      status: "failed",
+      reasoningSummary: `Candidate rejected by the validator: ${summarizeRejections(validation)}`,
+      createdAt: now,
+    };
+    try {
+      await docRef.set(aiResolutionSchema.parse(rejectedRecord));
+    } catch (cause) {
+      logAppError(
+        { code: "DATABASE_ERROR", message: "Failed to persist a rejected AI resolution record.", debug: cause },
+        { route: "lib/ai/resolveConversionFailure", patternId: input.patternId },
+      );
+    }
+    return {
+      ok: false,
+      error: AppErrors.conversion(
+        "The AI produced a candidate conversion that failed validation, so it was not stored.",
+        { debug: { rejections: validation.rejections } },
+      ),
+    };
+  }
+
   const completedRecord: AiResolution = {
     patternId: input.patternId,
     // From the claim, not from `pendingRecord`: a reclaimed slot may already
