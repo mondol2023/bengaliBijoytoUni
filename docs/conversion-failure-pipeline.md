@@ -158,7 +158,8 @@ at the time of writing is still the old unit; the UI says so, and
 
 | Field | Type | Notes |
 |---|---|---|
-| `patternId` | `string` | Resolution happens at the **pattern** level (not per-occurrence) — this is the cost/dedup control from §15. |
+| `patternId` | `string` | Resolution happens at the **pattern** level (not per-occurrence) — this is the cost/dedup control from §15. Provenance only as of Phase 4: it is not the lookup key, because it hashes `engineVersion` in. |
+| `encodingId` / `failedSequence` / `lookupKey` | `string | null` / `string` / `string` | Added in Phase 4. Denormalized from the authoritative `FailurePattern`, never client-supplied. `lookupKey` = `computeResolutionLookupKey({encodingId, failedSequence})` (`lib/conversionFailures/resolutionLookup.ts`), length-prefixed so the two parts cannot be shifted against each other. Defaulted in the schema so pre-Phase-4 records still parse; they get an empty `lookupKey` and are therefore invisible to serving rather than wrongly matched. See `docs/phase-4-resolution-store.md`. |
 | `provider` | `"gemini" \| "openai"` | |
 | `model` | `string` | e.g. `gemini-2.5-flash`, `gpt-4o-mini` — whatever's actually configured. |
 | `promptVersion` | `string` | `CONVERSION_RESOLUTION_PROMPT_VERSION`, bumped whenever the prompt changes; part of the dedup key. |

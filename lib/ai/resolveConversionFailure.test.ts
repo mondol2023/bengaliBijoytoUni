@@ -180,6 +180,9 @@ function makeSuccessfulResolution(overrides: Partial<ConversionResolution> = {})
 function makePendingRecord(overrides: Partial<AiResolution> = {}): AiResolution {
   return {
     patternId: PATTERN_ID,
+    encodingId: "bijoy",
+    failedSequence: "Av",
+    lookupKey: "lookup-key-1",
     provider: "gemini",
     model: "gemini-2.0-flash",
     promptVersion: CONVERSION_RESOLUTION_PROMPT_VERSION,
@@ -523,5 +526,43 @@ describe("resolveConversionFailure — privacy defaults", () => {
     expect(request.contextBefore).toBe("before-context");
     expect(request.contextAfter).toBe("after-context");
     expect(request.fullText).toBe("the full original text");
+  });
+});
+
+describe("resolveConversionFailure — the Phase 4 lookup key", () => {
+  it("stamps encodingId, failedSequence and lookupKey from the authoritative pattern", async () => {
+    // Denormalized so serving is one equality query rather than a join back
+    // through patternId — and taken from the pattern, never from the
+    // caller, which sends only a patternId and a provider id.
+    const { computeResolutionLookupKey } = await import("@/lib/conversionFailures/resolutionLookup");
+    const pattern = makePattern();
+    const provider = makeProvider({ resolve: vi.fn().mockResolvedValue(providerOk(makeSuccessfulResolution())) });
+    vi.mocked(getResolutionProvider).mockReturnValue(providerOk(provider));
+    vi.mocked(getFailurePatternDetail).mockResolvedValue(makeDetail(pattern, [makeOccurrence()]));
+    const mockDb = createMockDb();
+    vi.mocked(getAdminDb).mockReturnValue(asFirestore(mockDb));
+
+    await resolveConversionFailure(baseInput);
+
+    const persisted = mockDb.store.get(`${AI_RESOLUTIONS_COLLECTION}/${defaultKey()}`) as
+      | AiResolution
+      | undefined;
+    expect(persisted?.encodingId).toBe(pattern.encodingId);
+    expect(persisted?.failedSequence).toBe(pattern.failedSequence);
+    expect(persisted?.lookupKey).toBe(
+      computeResolutionLookupKey({
+        encodingId: pattern.encodingId,
+        failedSequence: pattern.failedSequence,
+      }),
+    );
+  });
+
+  it("gives two patterns that differ only in engine version the same lookup key", async () => {
+    // The whole reason the key is not patternId: a human's acceptance must
+    // survive an engine bump.
+    const { computeResolutionLookupKey } = await import("@/lib/conversionFailures/resolutionLookup");
+    const a = makePattern({ engineVersion: "engine-1.2.3" });
+    const b = makePattern({ engineVersion: "engine-9.9.9" });
+    expect(computeResolutionLookupKey(a)).toBe(computeResolutionLookupKey(b));
   });
 });

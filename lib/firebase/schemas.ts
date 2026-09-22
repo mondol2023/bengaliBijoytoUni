@@ -292,6 +292,24 @@ export type FailurePattern = z.infer<typeof failurePatternSchema>;
  */
 export const aiResolutionSchema = z.object({
   patternId: z.string().min(1),
+  /**
+   * Phase 4. The resolution's own lookup key, denormalized from the
+   * authoritative `FailurePattern` and never client-supplied.
+   *
+   * `patternId` cannot serve as the key: it hashes `engineVersion` in, so a
+   * resolution a human accepted would stop being findable the moment the
+   * engine version moved — see `lib/conversionFailures/resolutionLookup.ts`
+   * and `docs/phase-4-resolution-store.md`. `patternId` stays as
+   * provenance: which observation this candidate was generated from.
+   *
+   * Defaulted rather than required so that records written before Phase 4
+   * still parse. A legacy record gets an empty `lookupKey`, which matches
+   * no query and is therefore invisible to serving rather than wrongly
+   * matched — the safe direction.
+   */
+  encodingId: z.string().nullable().default(null),
+  failedSequence: z.string().default(""),
+  lookupKey: z.string().default(""),
   provider: z.enum(["gemini", "openai"]),
   model: z.string().min(1),
   /** Bumped whenever the prompt changes; part of the cache key alongside pattern+provider+model. */

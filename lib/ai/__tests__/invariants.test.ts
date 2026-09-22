@@ -181,6 +181,9 @@ function makePattern(): FailurePattern {
 function makeCompletedResolution(): AiResolution {
   return {
     patternId: PATTERN_ID,
+    encodingId: "bijoy",
+    failedSequence: "Av",
+    lookupKey: "lookup-key-1",
     provider: "gemini",
     model: "gemini-2.0-flash",
     promptVersion: "v1",
@@ -241,14 +244,43 @@ describe("the static scans below actually see the pipeline's source", () => {
 });
 
 describe("§10.1 an AI candidate never overwrites engineOutput or failedSequence", () => {
-  it("gives a stored resolution no field it could write either value into", () => {
+  it("gives a stored resolution no field it could write engineOutput into", () => {
     const parsed = aiResolutionSchema.parse({
       ...makeCompletedResolution(),
       engineOutput: "overwritten",
-      failedSequence: "overwritten",
     });
     expect(parsed).not.toHaveProperty("engineOutput");
-    expect(parsed).not.toHaveProperty("failedSequence");
+  });
+
+  it("writes failedSequence from the pattern, never from the provider result", () => {
+    // Phase 4 put `failedSequence` on the resolution document, because the
+    // lookup key needs it (docs/phase-4-resolution-store.md). That weakens
+    // the older form of this invariant — "the schema has nowhere to put it"
+    // — so the guarantee is re-stated where it now lives: the value is
+    // copied server-side from the authoritative `FailurePattern`, and the
+    // provider's normalized result (`resolution`, `providerCallResult`)
+    // may not reach it.
+    const source = readFileSync(path.join(AI_LIB_DIR, "resolveConversionFailure.ts"), "utf8");
+    const assignments = source
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("failedSequence:"));
+
+    expect(
+      assignments.length,
+      "no failedSequence assignment found — has the writer moved?",
+    ).toBeGreaterThan(0);
+
+    // The only sources allowed are the stored pattern and the pending
+    // record already built from it. Anything derived from the provider
+    // response fails here.
+    const allowed = ["failedSequence: pattern.failedSequence", "failedSequence: pendingRecord.failedSequence"];
+    for (const assignment of assignments) {
+      expect(
+        allowed.some((prefix) => assignment.startsWith(prefix)),
+        `failedSequence assigned from something other than the stored pattern: ${assignment}`,
+      ).toBe(true);
+    }
   });
 
   it("leaves the occurrence and pattern documents byte-for-byte unchanged when a candidate is accepted", async () => {

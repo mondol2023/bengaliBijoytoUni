@@ -58,6 +58,9 @@ function makeResolution(overrides: Partial<AiResolution> = {}): WithId<AiResolut
   return {
     id: "resolution-doc-1",
     patternId: PATTERN_ID,
+    encodingId: "bijoy",
+    failedSequence: "Av",
+    lookupKey: "lookup-key-1",
     provider: "gemini",
     model: "gemini-2.0-flash",
     promptVersion: "v1",

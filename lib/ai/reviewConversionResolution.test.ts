@@ -107,6 +107,9 @@ function makeStoredPattern(pattern: FailurePattern = makePattern()): WithId<Fail
 function makeResolution(overrides: Partial<AiResolution> = {}): AiResolution {
   return {
     patternId: PATTERN_ID,
+    encodingId: "bijoy",
+    failedSequence: "Av",
+    lookupKey: "lookup-key-1",
     provider: "gemini",
     model: "gemini-2.0-flash",
     promptVersion: "v1",

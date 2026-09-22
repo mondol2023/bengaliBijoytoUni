@@ -30,6 +30,7 @@ import { getResolutionProvider } from "./registry";
 import { CONVERSION_RESOLUTION_PROMPT_VERSION } from "./promptBuilder";
 import { mapResolutionConfidence } from "./confidenceMapping";
 import { RESOLUTION_LIMITS } from "./limits";
+import { computeResolutionLookupKey } from "../conversionFailures/resolutionLookup";
 import type { ConversionResolutionRequest, ProviderId, ResolutionOptions } from "./types";
 import type { ProviderError } from "./errors";
 import { AppErrors, type AppError, type Result } from "../errors/types";
@@ -246,6 +247,15 @@ export async function resolveConversionFailure(
 
   const pendingRecord: AiResolution = {
     patternId: input.patternId,
+    // Copied from the authoritative pattern, not from anything the caller
+    // sent, and hashed here so serving needs one equality query rather than
+    // a join back through `patternId`.
+    encodingId: pattern.encodingId,
+    failedSequence: pattern.failedSequence,
+    lookupKey: computeResolutionLookupKey({
+      encodingId: pattern.encodingId,
+      failedSequence: pattern.failedSequence,
+    }),
     provider: provider.id,
     model: provider.model,
     promptVersion: CONVERSION_RESOLUTION_PROMPT_VERSION,
@@ -308,6 +318,9 @@ export async function resolveConversionFailure(
   const resolution = providerCallResult.value;
   const completedRecord: AiResolution = {
     patternId: input.patternId,
+    encodingId: pendingRecord.encodingId,
+    failedSequence: pendingRecord.failedSequence,
+    lookupKey: pendingRecord.lookupKey,
     provider: provider.id,
     model: provider.model,
     promptVersion: resolution.promptVersion,
