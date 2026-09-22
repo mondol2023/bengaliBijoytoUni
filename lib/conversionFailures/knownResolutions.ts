@@ -17,14 +17,32 @@ import { z } from "zod";
 import type { Bilingual } from "@/lib/privacy/disclosure";
 
 /**
+ * Placeholder wording, deliberately not shippable.
+ *
+ * The real English and Bengali copy is held for review together with the
+ * privacy disclosure copy, so this constant carries a visible `TBD` marker
+ * in both languages instead. That makes the hold enforceable rather than
+ * remembered: draft wording that reads like finished wording is exactly how
+ * unreviewed copy ships.
+ *
+ * `__tests__/knownResolutions.test.ts` pins the marker.
+ */
+export const TBD_LABEL: Bilingual = {
+  en: "TBD — AI-suggested, unverified (wording pending review)",
+  bn: "TBD — এআই-প্রস্তাবিত, যাচাই করা হয়নি (কপি পর্যালোচনার অপেক্ষায়)",
+};
+
+/**
  * The label an unverified entry carries. Bilingual for the same reason the
  * privacy copy is: it is shown, not switched between, and a reader of either
- * language must be told the same thing. **Draft wording, awaiting review.**
+ * language must be told the same thing.
+ *
+ * Aliased to the placeholder until the copy review lands. Swapping in the
+ * approved wording is a one-line change here — nothing else reads the
+ * strings, and `SERVE_UNVERIFIED_AI` is off by default, so no user sees
+ * either version in the meantime.
  */
-export const AI_UNVERIFIED_LABEL: Bilingual = {
-  en: "AI-suggested, unverified",
-  bn: "এআই-প্রস্তাবিত, যাচাই করা হয়নি",
-};
+export const AI_UNVERIFIED_LABEL: Bilingual = TBD_LABEL;
 
 export const knownResolutionSchema = z.object({
   /** The legacy sequence this resolves. Matches a `failedSequence` in `patterns`. */

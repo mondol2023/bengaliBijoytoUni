@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AI_UNVERIFIED_LABEL,
+  TBD_LABEL,
   KNOWN_RESOLUTIONS_DEFAULT_LIMIT,
   KNOWN_RESOLUTIONS_MAX_BYTES,
   knownResolutionSchema,
@@ -87,6 +88,15 @@ describe("the label travels in the payload", () => {
     expect(AI_UNVERIFIED_LABEL.en).toContain("unverified");
     expect(AI_UNVERIFIED_LABEL.bn.length).toBeGreaterThan(0);
     expect(AI_UNVERIFIED_LABEL.bn).not.toBe(AI_UNVERIFIED_LABEL.en);
+  });
+
+  // The copy is held for review. While the label is still the placeholder,
+  // both languages must carry a marker no reviewer could mistake for final
+  // wording; when the approved copy lands, this case goes with it.
+  it("marks the held copy as a placeholder, in both languages", () => {
+    expect(TBD_LABEL.en).toContain("TBD");
+    expect(TBD_LABEL.bn).toContain("TBD");
+    expect(AI_UNVERIFIED_LABEL).toBe(TBD_LABEL);
   });
 
   it("makes label and verification agree, as the schema requires", () => {
