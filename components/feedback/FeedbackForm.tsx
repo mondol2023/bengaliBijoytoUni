@@ -50,10 +50,20 @@ export interface FeedbackFormProps {
   encodingId?: string | null;
   sampleInput?: string | null;
   sampleOutput?: string | null;
+  /** Pre-fill, for the "this is wrong" control on a marked segment. Editable like anything typed. */
+  initialCategory?: string;
+  initialMessage?: string;
   className?: string;
 }
 
-export function FeedbackForm({ encodingId, sampleInput, sampleOutput, className }: FeedbackFormProps) {
+export function FeedbackForm({
+  encodingId,
+  sampleInput,
+  sampleOutput,
+  initialCategory,
+  initialMessage,
+  className,
+}: FeedbackFormProps) {
   const { user, getIdToken } = useAuth();
   const pathname = usePathname();
   const reducedMotion = usePrefersReducedMotion();
@@ -62,9 +72,9 @@ export function FeedbackForm({ encodingId, sampleInput, sampleOutput, className 
   const emailId = useId();
   const contextId = useId();
 
-  const [category, setCategory] = useState("wrong_conversion");
+  const [category, setCategory] = useState(initialCategory ?? "wrong_conversion");
   const [rating, setRating] = useState<number | null>(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(initialMessage ?? "");
   const [email, setEmail] = useState("");
   const [includeContext, setIncludeContext] = useState(true);
   const [status, setStatus] = useState<Status>("idle");
@@ -116,7 +126,7 @@ export function FeedbackForm({ encodingId, sampleInput, sampleOutput, className 
       }
 
       setStatus("sent");
-      setMessage("");
+      setMessage(initialMessage ?? "");
       setRating(null);
     } catch {
       setError(UNREACHABLE);
