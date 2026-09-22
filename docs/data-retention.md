@@ -135,6 +135,40 @@ They have no `expireAt`, so no policy will ever expire them. Two of them:
   Backfilling with `createdAt + retention` rather than `now + retention`
   makes old rows expire on the same schedule they would have had.
 
+## 5a. `aiResolutions` is exempt, deliberately
+
+The third collection in the pipeline has **no retention and no `expireAt`**,
+and that is a decision rather than an omission. An accepted resolution is a
+human judgement about how a legacy sequence converts. Expiring it would
+delete the review while leaving the pattern it resolved standing — the
+opposite of the trade the other two periods make, where the aggregate
+outlives the individual records that fed it.
+
+Four things keep it true, each asserted in
+`lib/conversionFailures/__tests__/retentionInterplay.test.ts`:
+
+1. `aiResolutions` is absent from `RETENTION_COLLECTIONS`, in
+   `lib/conversionFailures/retention.ts` and in `scripts/retentionPeriods.mjs`,
+   so neither the app nor the backfill script can stamp it.
+2. `aiResolutionSchema` declares no `expireAt`. Every write to the collection
+   goes through `aiResolutionSchema.parse`, and zod strips unknown keys, so a
+   caller passing one has it dropped rather than persisted.
+3. No shipped module writes the field into that collection; the only
+   `retentionFields()` call sites name the other two.
+4. `mayExpireResolution` in `retention.ts` states the rule that would apply
+   if a TTL were ever added: accepted is exempt, unreviewed and rejected are
+   not. It has no caller today, and the test above is what would fail if a
+   policy appeared without honouring it.
+
+`RETENTION_EXEMPT_COLLECTIONS` in the same module carries the reason in code,
+because "there is no TTL here" and "nobody got round to a TTL here" look
+identical from outside and only one of them is a choice.
+
+Note that this exemption is about the *resolution*, not about the occurrence
+it came from. The user text that produced the failure still lives in
+`conversionFailures` and still expires at 90 days; what survives is the
+sequence, the candidate conversion, and who accepted it.
+
 ## 6. Uploaded files
 
 Everything above is about the two failure collections. Uploaded files are a

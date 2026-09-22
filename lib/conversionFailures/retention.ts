@@ -79,3 +79,38 @@ export type RetentionFields = z.infer<typeof retentionFieldsSchema>;
 export function retentionFields(collection: RetentionCollection, now: Date = new Date()): RetentionFields {
   return retentionFieldsSchema.parse({ expireAt: computeExpireAt(collection, now) });
 }
+
+/**
+ * Collections that hold conversion-failure data and are deliberately outside
+ * retention, with the reason. Named rather than merely absent, because
+ * "there is no TTL on this" and "nobody has got round to a TTL on this" look
+ * identical from the outside, and only one of them is a decision.
+ */
+export const RETENTION_EXEMPT_COLLECTIONS = {
+  aiResolutions:
+    "An accepted resolution is a human decision about how a legacy sequence converts, " +
+    "not a record of somebody's text. Expiring it would delete the review and leave the " +
+    "pattern it resolved — the opposite of the trade the other two periods make.",
+} as const;
+
+/**
+ * Whether one stored resolution could ever be expired, if `aiResolutions`
+ * were given a TTL.
+ *
+ * **There is no such TTL today**, and
+ * `__tests__/retentionInterplay.test.ts` fails if one appears without this
+ * being honoured: `aiResolutions` is absent from `RETENTION_COLLECTIONS`,
+ * nothing writes `expireAt` into it, and `aiResolutionSchema` has no such
+ * field, so zod strips one even if a caller passes it. This function exists
+ * so the rule that would then apply is written down as code next to the
+ * periods, instead of being rediscovered by whoever adds the policy.
+ *
+ * Accepted is the exempt case, and only accepted. An unreviewed candidate is
+ * a model's guess with a cost attached and nothing else; a rejected one is a
+ * record of a mistake. Neither is a judgement worth keeping forever.
+ */
+export function mayExpireResolution(resolution: {
+  reviewDecision: "accepted" | "rejected" | null;
+}): boolean {
+  return resolution.reviewDecision !== "accepted";
+}
