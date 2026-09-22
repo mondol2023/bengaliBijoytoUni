@@ -83,3 +83,41 @@ The review called 816 "the start of Phase 3". It is not: Phase 3 item 1
 figure reported when those items were presented for review. The 632 → 816
 span therefore covers Phase 3's implementation plus the four hardening
 commits that preceded it, not a gap before Phase 3 began.
+
+## 6. Phase 5: 1088 → 1310
+
+The chain again, so it does not stop mid-air a second time. Phase 4 is not
+broken out here — it was never counted commit by commit, and inventing that
+table after the fact is exactly what §"How these numbers were obtained"
+exists to avoid. **1088 / 76 files** is a measured total at `3c3d09a`, the
+Phase 5 design commit; every figure below is either a measured run or a
+per-file count from `vitest --reporter=json` at HEAD, and the two reconcile
+exactly.
+
+| Commit | What it added | Δ | Suite |
+|---|---|---:|---:|
+| `3c3d09a` | *Phase 5 design* — a document | — | **1088** |
+| `5419585` | `TBD_LABEL` placeholder, one test that the shipped label is the placeholder | +1 | 1089 |
+| `639b91c` | `segments.test.ts` — 137, nearly all of them the existing Bijoy / SutonnyMJ / Alpha-ANSI fixtures re-run through one rejoin assertion | +137 | 1226 |
+| `e0581e8` | `runConversion.test.ts` — the four states, the lookup order, the third validator run | +18 | 1244 |
+| `e378b22` | Guard B: one case naming the new entry point | +1 | 1245 |
+| `b764ba9` | `runConversionFlag.test.ts` — 7 off-spellings refuse, 6 truthy spellings apply, 1 pins per-call reads | +14 | 1259 |
+| `1b82927` | `reverify.test.ts` 16, `reverifyPatterns.test.ts` 10, the admin route 9, plus 5 appended to `conversionFailures.test.ts` | +40 | 1299 |
+| `6b548d9` | `feedbackDraft.test.ts` — what the report carries, and what it must not | +11 | **1310** |
+
+Measured totals along the way: 1088 (76 files) at `3c3d09a`, 1226 (77) at
+`639b91c`, 1244 (78) at `e0581e8`, 1299 (82) at `1b82927`, 1310 (83) at
+`6b548d9`. The three unmeasured rows (`5419585`, `e378b22`, `b764ba9`) are
+fixed by difference against those, and their per-file counts at HEAD agree.
+
+The 137 in one commit is the row that will look wrong at a glance, the same
+way the cache's 39 did — and unlike the cache, it is mostly one assertion.
+`segments.test.ts` loops the three existing fixture files (`bijoy`,
+`sutonny`, `alpha-ansi`) into a case each and checks one property:
+`joinSegments(output.outputSegments) === output.unicodeText`. The count is
+the fixture corpus, not 137 ideas. It is worth its size anyway, because that
+property is what the whole marking scheme rests on: a cut that is merely
+plausible splices a fallback into the wrong place, and the fixtures are the
+only body of real legacy text available to catch it. Six further tests cover
+what a segment *is* — one per unmapped byte, keyed by the same string the
+store keys a resolution by.

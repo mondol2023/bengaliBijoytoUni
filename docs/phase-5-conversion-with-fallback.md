@@ -265,3 +265,66 @@ a field and a query, not a mechanism, and it does not change who decides.
    accepted resolution for it be retired, kept as history, or kept and
    simply stop being published? I would keep and stop publishing — it is the
    record of how the gap was closed.
+
+## 7. Status: what shipped, what is held, and the one blocked item
+
+Added when the implementation landed, so §6 is not read later as if it were
+still all open.
+
+### What shipped
+
+| Commit | What |
+|---|---|
+| `5419585` | `AI_UNVERIFIED_LABEL` held behind `TBD_LABEL`, a marked placeholder |
+| `639b91c` | `buildOutputSegments()` — the cut that makes one filled sequence markable |
+| `e0581e8` | `runConversion()`, the four states, and the lookup order |
+| `e378b22` | Guard B extended to name `runConversion.ts` and `resolutionSource.ts` |
+| `b764ba9` | The flag test: no `fallback_unverified` result escapes with `SERVE_UNVERIFIED_AI` off, driving the real flag module |
+| `1b82927` | "Resolved" decided server-side, with both triggers |
+| `6b548d9` | "This is wrong" on a marked segment, through the existing feedback route |
+
+### Question 2 is decided: no fallback on the extract path
+
+`/api/documents/extract` keeps today's behaviour — report the sequences,
+substitute nothing. A downloaded file has nowhere to carry the "unverified"
+label, and text silently substituted into a document the user will treat as
+final is worse than the warning that is already there. To be revisited only
+if the label can be carried into the output file itself.
+
+### Questions 1 and 3 are held
+
+Recommended answers are recorded in the Phase 5 report and **not
+implemented**. Nothing in the code above depends on either answer: fallbacks
+are counted nowhere, and no resolution is retired by anything.
+
+### Blocked: the deployment topology
+
+The repository does not say what this deploys onto — no `vercel.json`, no
+`Dockerfile`, no `Procfile`, `fly.toml`, `render.yaml` or `app.yaml`; CI runs
+Playwright and has no deploy job; `next.config.ts` sets no `output`; and
+`package.json` starts the app with a plain `next start`. The one match for
+"vercel" anywhere in the tracked tree is `public/vercel.svg`, a
+create-next-app leftover, which says nothing about the host. That is the same
+question `docs/threat-model-public-failure-endpoints.md` §3 leaves open.
+
+The consequence, stated so it is not re-litigated: **if this is serverless or
+multi-instance, the in-memory cost cap and rate limiter are not controls**
+and must move to a shared atomic counter — a Firestore document with
+`FieldValue.increment`, the pattern `occurrenceCount` already uses. If it is
+a single long-running Node server, the current in-memory approach is fine as
+written. The migration was not built speculatively, because the two answers
+call for different code and only one of them is wanted.
+
+### What §3's "never on a snapshot build" cost, and what it did not
+
+The snapshot build does no re-verification, as instructed. Finding 2 of the
+threat model asked for exactly that as its strongest mitigation, so it is
+worth being precise about where that leaves it: the stored `status` is now
+kept current by the engine-change sweep and the occurrence-time correction,
+but `/api/conversion-failures/known` still builds from
+`listFailurePatterns()` without a status filter, so a pattern the engine now
+converts can still be published until the next sweep — and a poisoned
+pattern is published regardless, because its status is honestly `open`.
+Filtering the published snapshot by stored status is cheap and needs no
+engine run; it is a change to what the endpoint serves, so it is proposed
+here rather than taken.

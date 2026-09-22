@@ -18,7 +18,7 @@ single-instance and the multi-instance case.
 | # | Finding | Severity | Status |
 |---|---|---|---|
 | 1 | Body was buffered before any bound applied | Medium | **Fixed** — `lib/security/readJsonBody.ts`, 512 KiB ceiling |
-| 2 | Counts can be poisoned to choose the published top N | **High**, latent | **Not fixed** — mitigation proposed, belongs with Phase 4 §5 |
+| 2 | Counts can be poisoned to choose the published top N | **High**, latent | **Not fixed** — see the Phase 5 note below |
 | 3 | Rate limiter is per-instance and resets on cold start | Medium | Known and documented; not fixed here |
 | 4 | Rate-limit identity collapses to one bucket without a proxy header | Low | Not fixed — needs a deployment answer first |
 | 5 | Snapshot `limit` is caller-chosen up to 200 | Low | Accepted |
@@ -133,6 +133,18 @@ serves, and the user-visible contract of that endpoint is Phase 4 item 5's
 subject. Doing it here would pre-empt a decision that is explicitly on the
 Phase 4 list.
 
+**Phase 5 note (`1b82927`).** Server-side re-verification now exists, but
+deliberately *not* on the snapshot build: the approved Phase 5 scope put the
+engine re-run behind two triggers (an engine/rules change, and a new
+occurrence) and ruled it out of the build path. So mitigation 1 above is
+still not in place. What changed is that a stored `status` is now kept
+honest; what did not is that `/api/conversion-failures/known` publishes
+without filtering on it, and a poisoned pattern is `open` anyway, which is
+the half of finding 2 that re-verification never addressed. Filtering the
+published snapshot by stored status is the cheap next step and needs no
+engine run — it is a change to what the endpoint serves, so it is proposed,
+not taken.
+
 ## 3. Does the rate limiter work in this deployment model?
 
 **Honestly: unknown, and weaker than it looks in the likely case.**
@@ -161,6 +173,16 @@ that does not depend on the limiter working at all.
 
 **Open question for you:** what is this deployed on, and is it one instance or
 many? The answer decides whether finding 3 is documentation or work.
+
+**Asked of the repository, Phase 5 (`6b548d9`): it does not know.** No
+`vercel.json`, `Dockerfile`, `Procfile`, `fly.toml`, `render.yaml` or
+`app.yaml` is tracked; `next.config.ts` sets no `output`; `package.json`
+starts the app with a plain `next start`; and the only CI workflow
+(`.github/workflows/playwright.yml`) runs tests and has no deploy job. The
+sole "vercel" match in the tree is `public/vercel.svg`, a create-next-app
+leftover. So this stays a question for the maintainer, not one the code can
+answer — and the shared-counter migration it would require was deliberately
+not built on a guess.
 
 ## 4. Rate-limit identity
 
