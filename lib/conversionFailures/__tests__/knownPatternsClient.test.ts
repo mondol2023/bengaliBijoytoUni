@@ -7,12 +7,20 @@ import {
   type CachedSnapshot,
 } from "../knownPatternsClient";
 
+/**
+ * The wire payload, deliberately written without `resolutions` — snapshots
+ * in this shape are sitting in browsers' `localStorage` today, and the
+ * client has to keep accepting them.
+ */
 const SNAPSHOT = {
   encodingId: "bijoy",
   engineVersion: "1.0.0",
   patterns: [{ failedSequence: "Av", failureCategory: "unmapped_character", status: "open" }],
   generatedAt: "2026-09-21T00:00:00.000Z",
 };
+
+/** What that payload becomes after parsing: the missing array is defaulted. */
+const PARSED = { ...SNAPSHOT, resolutions: [] };
 
 function jsonResponse(body: unknown, etag = '"abc123"'): Response {
   return new Response(JSON.stringify(body), {
@@ -41,7 +49,7 @@ describe("fetchKnownPatterns", () => {
 
     const result = await fetchKnownPatterns({ encodingId: "bijoy", store, fetchImpl, now });
 
-    expect(result).toStrictEqual(SNAPSHOT);
+    expect(result).toStrictEqual(PARSED);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url] = fetchImpl.mock.calls[0];
     expect(String(url)).toContain("encodingId=bijoy");
@@ -54,7 +62,7 @@ describe("fetchKnownPatterns", () => {
     await fetchKnownPatterns({ encodingId: "bijoy", store, fetchImpl, now });
     const second = await fetchKnownPatterns({ encodingId: "bijoy", store, fetchImpl, now });
 
-    expect(second).toStrictEqual(SNAPSHOT);
+    expect(second).toStrictEqual(PARSED);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -74,7 +82,7 @@ describe("fetchKnownPatterns", () => {
       now: h.now,
     });
 
-    expect(revalidated).toStrictEqual(SNAPSHOT);
+    expect(revalidated).toStrictEqual(PARSED);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     const [, init] = fetchImpl.mock.calls[1];
     expect((init as RequestInit).headers).toStrictEqual({ "If-None-Match": '"v1"' });
@@ -113,7 +121,7 @@ describe("fetchKnownPatterns", () => {
       now: h.now,
     });
 
-    expect(result).toStrictEqual(updated);
+    expect(result).toStrictEqual({ ...updated, resolutions: [] });
   });
 
   it("sends no validator when nothing is cached", async () => {
@@ -144,7 +152,7 @@ describe("fetchKnownPatterns: never breaks the caller", () => {
 
     expect(
       await fetchKnownPatterns({ encodingId: "bijoy", store: h.store, fetchImpl, now: h.now }),
-    ).toStrictEqual(SNAPSHOT);
+    ).toStrictEqual(PARSED);
   });
 
   it("returns null on a server error with a cold cache", async () => {

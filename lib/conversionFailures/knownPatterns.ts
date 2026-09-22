@@ -24,6 +24,7 @@
  */
 import { z } from "zod";
 import { FAILURE_CATEGORIES } from "@/features/converter/engine/classify";
+import { knownResolutionSchema } from "./knownResolutions";
 
 /** The whole public payload for one pattern. Three fields, by design. */
 export const knownPatternSchema = z.object({
@@ -38,6 +39,13 @@ export const knownPatternsSnapshotSchema = z.object({
   engineVersion: z.string().min(1),
   /** Ordered most-frequent-first. The counts themselves are not published. */
   patterns: z.array(knownPatternSchema),
+  /**
+   * Accepted resolutions for this encoding, most-used first
+   * (`./knownResolutions.ts`). Defaulted so a snapshot written before this
+   * field existed — one sitting in a browser cache right now — still parses
+   * rather than being thrown away as invalid.
+   */
+  resolutions: z.array(knownResolutionSchema).default([]),
   /** When the server built this snapshot. Deliberately excluded from the ETag. */
   generatedAt: z.string(),
 });

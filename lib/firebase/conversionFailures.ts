@@ -363,3 +363,36 @@ export async function applyResolutionHits(
     { collection: AI_RESOLUTIONS_COLLECTION, operation: "update", documents: pending.length },
   ]);
 }
+
+/**
+ * Candidate resolutions for one encoding, most-used first — the read behind
+ * the published snapshot's `resolutions` array.
+ *
+ * Deliberately *not* filtered to `reviewDecision == "accepted"` in the
+ * query. Firestore would need a third indexed field for that, and the
+ * decision about what may be published is one the pure selector owns
+ * (`lib/conversionFailures/knownResolutions.ts`), where it can be read and
+ * tested without a database. What the query does is bound the read: one
+ * encoding, ordered by `hitCount`, a hard limit. Over-fetching a little and
+ * filtering in memory is the cheaper mistake here — the alternative is a
+ * publication rule split across an index definition and a function.
+ *
+ * Backed by the `encodingId` ASC / `hitCount` DESC composite index in
+ * `firestore.indexes.json`.
+ */
+export async function listResolutionsForEncoding(options: {
+  encodingId: string;
+  limit: number;
+}): Promise<WithId<AiResolution>[]> {
+  const snapshot = await getAdminDb()
+    .collection(AI_RESOLUTIONS_COLLECTION)
+    .where("encodingId", "==", options.encodingId)
+    .orderBy("hitCount", "desc")
+    .limit(options.limit)
+    .get();
+
+  return snapshot.docs.flatMap((doc) => {
+    const parsed = aiResolutionSchema.safeParse(doc.data());
+    return parsed.success ? [{ id: doc.id, ...parsed.data }] : [];
+  });
+}

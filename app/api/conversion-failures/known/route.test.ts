@@ -17,6 +17,7 @@ vi.mock("@/lib/firebase/admin", () => ({
 
 vi.mock("@/lib/firebase/conversionFailures", () => ({
   listFailurePatterns: vi.fn(),
+  listResolutionsForEncoding: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/session", () => ({
@@ -28,7 +29,10 @@ vi.mock("@/lib/security/rateLimit", () => ({
   getRequestIp: vi.fn(() => "127.0.0.1"),
 }));
 
-import { listFailurePatterns } from "@/lib/firebase/conversionFailures";
+import {
+  listFailurePatterns,
+  listResolutionsForEncoding,
+} from "@/lib/firebase/conversionFailures";
 import { GET } from "./route";
 
 /** A stored pattern, with every field the public payload must not carry. */
@@ -62,6 +66,8 @@ function makeRequest(query: string, headers: Record<string, string> = {}): NextR
 describe("GET /api/conversion-failures/known", () => {
   beforeEach(() => {
     state.adminConfigured = true;
+    vi.mocked(listResolutionsForEncoding).mockReset();
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([]);
     vi.mocked(listFailurePatterns).mockReset();
     vi.mocked(listFailurePatterns).mockResolvedValue([storedPattern()] as never);
   });
@@ -126,6 +132,8 @@ describe("GET /api/conversion-failures/known", () => {
 describe("GET /api/conversion-failures/known: ETag", () => {
   beforeEach(() => {
     state.adminConfigured = true;
+    vi.mocked(listResolutionsForEncoding).mockReset();
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([]);
     vi.mocked(listFailurePatterns).mockReset();
     vi.mocked(listFailurePatterns).mockResolvedValue([storedPattern()] as never);
   });
@@ -207,10 +215,162 @@ describe("GET /api/conversion-failures/known: degraded", () => {
 
   it("fails cleanly when the query throws", async () => {
     state.adminConfigured = true;
+    vi.mocked(listResolutionsForEncoding).mockReset();
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([]);
     vi.mocked(listFailurePatterns).mockRejectedValue(new Error("firestore is down"));
     const response = await GET(makeRequest(`?encodingId=${nextEncodingId()}`));
     expect(response.status).toBeGreaterThanOrEqual(500);
     // The underlying message is server-only and must not reach the client.
     expect(JSON.stringify(await response.json())).not.toContain("firestore is down");
+  });
+});
+
+/**
+ * The Phase 4 half of the payload. The selection rules themselves are tested
+ * in `lib/conversionFailures/__tests__/knownResolutions.test.ts`; what is
+ * tested here is that the route applies them, that the ETag covers them, and
+ * that the per-instance cache is not keyed so coarsely that flipping the
+ * flag serves the wrong answer for a minute.
+ */
+function storedResolution(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "resolution-1",
+    patternId: "pattern-abc",
+    encodingId: "bijoy",
+    failedSequence: "Av",
+    lookupKey: "lookup-1",
+    provider: "gemini",
+    model: "gemini-2.0-flash",
+    promptVersion: "v1",
+    engineVersion: "1.0.0",
+    rulesHash: "rules-abc",
+    candidateConversion: "আ",
+    reasoningSummary: null,
+    confidence: "high" as const,
+    alternativeCandidates: [],
+    isCertain: true,
+    rawResponse: null,
+    hitCount: 9_412,
+    lastUsedAt: "2026-09-01T00:00:00.000Z",
+    status: "reviewed" as const,
+    reviewDecision: "accepted" as const,
+    reviewedBy: "admin-1",
+    reviewedAt: "2026-09-01T00:00:00.000Z",
+    reviewNote: "Checked against a printed circular.",
+    createdAt: "2026-08-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("GET /api/conversion-failures/known: resolutions", () => {
+  // A distinct `limit` per test, since the route's cache is keyed on it and
+  // these all have to use the one encoding id the rule tables know.
+  let limitCounter = 100;
+  function nextLimit(): number {
+    limitCounter += 1;
+    return limitCounter;
+  }
+
+  beforeEach(() => {
+    state.adminConfigured = true;
+    vi.mocked(listFailurePatterns).mockReset();
+    vi.mocked(listFailurePatterns).mockResolvedValue([]);
+    vi.mocked(listResolutionsForEncoding).mockReset();
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([]);
+    vi.unstubAllEnvs();
+  });
+
+  it("publishes an accepted resolution, and nothing else about it", async () => {
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([storedResolution()] as never);
+
+    const response = await GET(makeRequest(`?encodingId=bijoy&limit=${nextLimit()}`));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.resolutions).toHaveLength(1);
+    expect(body.resolutions[0]).toStrictEqual({
+      failedSequence: "Av",
+      candidateConversion: "আ",
+      verification: "accepted",
+      label: null,
+      engineVersion: "1.0.0",
+    });
+    // The ranking number, the reviewer and the note are all server-side.
+    const raw = JSON.stringify(body);
+    expect(raw).not.toContain("9412");
+    expect(raw).not.toContain("admin-1");
+    expect(raw).not.toContain("printed circular");
+  });
+
+  it("withholds an unreviewed resolution while the flag is off", async () => {
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([
+      storedResolution({ status: "completed", reviewDecision: null }),
+    ] as never);
+
+    const response = await GET(makeRequest(`?encodingId=bijoy&limit=${nextLimit()}`));
+
+    expect((await response.json()).resolutions).toHaveLength(0);
+  });
+
+  it("serves and labels an unreviewed resolution when the flag is on", async () => {
+    vi.stubEnv("SERVE_UNVERIFIED_AI", "true");
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([
+      storedResolution({ status: "completed", reviewDecision: null }),
+    ] as never);
+
+    const response = await GET(makeRequest(`?encodingId=bijoy&limit=${nextLimit()}`));
+    const [entry] = (await response.json()).resolutions;
+
+    expect(entry.verification).toBe("unverified");
+    expect(entry.label.en).toContain("unverified");
+    expect(entry.label.bn.length).toBeGreaterThan(0);
+  });
+
+  it("keys the snapshot cache on the flag, so flipping it is not masked", async () => {
+    const limit = nextLimit();
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([
+      storedResolution({ status: "completed", reviewDecision: null }),
+    ] as never);
+
+    const off = await GET(makeRequest(`?encodingId=bijoy&limit=${limit}`));
+    expect((await off.json()).resolutions).toHaveLength(0);
+
+    vi.stubEnv("SERVE_UNVERIFIED_AI", "true");
+    const on = await GET(makeRequest(`?encodingId=bijoy&limit=${limit}`));
+    expect((await on.json()).resolutions).toHaveLength(1);
+  });
+
+  it("re-runs the validator, so an accepted answer that went stale is withheld", async () => {
+    // Nothing about the stored document changed; the answer is simply not a
+    // valid conversion any more.
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([
+      storedResolution({ candidateConversion: "Av" }),
+    ] as never);
+
+    const response = await GET(makeRequest(`?encodingId=bijoy&limit=${nextLimit()}`));
+
+    expect((await response.json()).resolutions).toHaveLength(0);
+  });
+
+  it("covers the resolutions in the ETag", async () => {
+    const limit = nextLimit();
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([] as never);
+    const first = await GET(makeRequest(`?encodingId=bijoy&limit=${limit}`));
+    const firstEtag = first.headers.get("etag");
+
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([storedResolution()] as never);
+    const second = await GET(makeRequest(`?encodingId=bijoy&limit=${nextLimit()}`));
+
+    expect(firstEtag).not.toBeNull();
+    expect(second.headers.get("etag")).not.toBe(firstEtag);
+  });
+
+  it("returns an empty array, not a missing field, with no backend configured", async () => {
+    state.adminConfigured = false;
+
+    const response = await GET(makeRequest(`?encodingId=bijoy&limit=${nextLimit()}`));
+
+    expect((await response.json()).resolutions).toStrictEqual([]);
+    expect(listResolutionsForEncoding).not.toHaveBeenCalled();
   });
 });

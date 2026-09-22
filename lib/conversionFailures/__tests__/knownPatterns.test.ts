@@ -73,3 +73,70 @@ describe("knownPatternsSnapshotSchema", () => {
     expect(knownPatternsSnapshotSchema.safeParse(bad).success).toBe(false);
   });
 });
+
+describe("knownPatternsSnapshotSchema and the resolutions array", () => {
+  const valid = {
+    encodingId: "bijoy",
+    engineVersion: "1.0.0",
+    patterns: [],
+    generatedAt: "2026-09-22T00:00:00.000Z",
+  };
+
+  it("parses a snapshot written before resolutions existed", () => {
+    // There are such snapshots in browsers' `localStorage` right now. A
+    // required field would make the client throw them away and refetch,
+    // which is the one thing its cache exists to avoid.
+    const parsed = knownPatternsSnapshotSchema.safeParse(valid);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.resolutions).toStrictEqual([]);
+  });
+
+  it("parses a snapshot that carries them", () => {
+    const parsed = knownPatternsSnapshotSchema.safeParse({
+      ...valid,
+      resolutions: [
+        {
+          failedSequence: "Av",
+          candidateConversion: "আ",
+          verification: "accepted",
+          label: null,
+          engineVersion: "1.0.0",
+        },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a verification value it does not know", () => {
+    const parsed = knownPatternsSnapshotSchema.safeParse({
+      ...valid,
+      resolutions: [
+        {
+          failedSequence: "Av",
+          candidateConversion: "আ",
+          verification: "probably_fine",
+          label: null,
+          engineVersion: "1.0.0",
+        },
+      ],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects a resolution with an empty candidate", () => {
+    const parsed = knownPatternsSnapshotSchema.safeParse({
+      ...valid,
+      resolutions: [
+        {
+          failedSequence: "Av",
+          candidateConversion: "",
+          verification: "accepted",
+          label: null,
+          engineVersion: "1.0.0",
+        },
+      ],
+    });
+    expect(parsed.success).toBe(false);
+  });
+});

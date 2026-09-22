@@ -9,10 +9,16 @@ import {
   toKnownPattern,
   type KnownPatternsSnapshot,
 } from "@/lib/conversionFailures/knownPatterns";
+import { KNOWN_RESOLUTIONS_DEFAULT_LIMIT } from "@/lib/conversionFailures/knownResolutions";
+import { selectServableResolutions } from "@/lib/conversionFailures/selectResolutions";
+import { isServeUnverifiedAiEnabled } from "@/lib/conversionFailures/serveFlags";
 import { AppErrors } from "@/lib/errors/types";
 import { failResponder, toAppError } from "@/lib/errors/handlers";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
-import { listFailurePatterns } from "@/lib/firebase/conversionFailures";
+import {
+  listFailurePatterns,
+  listResolutionsForEncoding,
+} from "@/lib/firebase/conversionFailures";
 import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
 
 export const runtime = "nodejs";
@@ -50,6 +56,7 @@ function computeEtag(snapshot: KnownPatternsSnapshot): string {
     encodingId: snapshot.encodingId,
     engineVersion: snapshot.engineVersion,
     patterns: snapshot.patterns,
+    resolutions: snapshot.resolutions,
   });
   return `"${createHash("sha256").update(material).digest("hex").slice(0, 32)}"`;
 }
@@ -84,6 +91,13 @@ function cacheHeaders(etag: string): Record<string, string> {
  * The counts are deliberately withheld even though they determine the order.
  * The ordering is the useful part; the absolute volume of a deployment's
  * conversion failures is operational data with no client-side use.
+ *
+ * Since Phase 4 it also publishes `resolutions`: what an accepted candidate
+ * says the sequence should have been. Same reasoning applies to that array —
+ * `hitCount` orders it and is not published, and
+ * `lib/conversionFailures/selectResolutions.ts` builds each entry field by
+ * field rather than forwarding a stored document. Nothing here is on the conversion path: the
+ * converter produces the same output whether this endpoint answers or not.
  */
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -115,6 +129,7 @@ export async function GET(request: NextRequest) {
       encodingId,
       engineVersion: CONVERSION_ENGINE_VERSION,
       patterns: [],
+      resolutions: [],
       generatedAt: new Date().toISOString(),
     };
     const etag = computeEtag(snapshot);
@@ -131,21 +146,30 @@ export async function GET(request: NextRequest) {
   });
   if (!rateLimit.ok) return fail(rateLimit.error);
 
-  const cacheKey = `${encodingId}:${limit}`;
+  // The flag is part of the key, not just part of the content: flipping
+  // `SERVE_UNVERIFIED_AI` must not be masked for a minute by a cached
+  // snapshot built under the other setting.
+  const serveUnverified = isServeUnverifiedAiEnabled();
+  const cacheKey = `${encodingId}:${limit}:${serveUnverified ? "unverified" : "accepted"}`;
 
   try {
     let entry = await snapshotCache.get(cacheKey);
 
     if (entry === undefined) {
-      const patterns = await listFailurePatterns({
-        limit,
-        encodingId,
-        orderBy: "occurrenceCount",
-      });
+      // Two reads per snapshot build rather than one, both bounded and both
+      // paid at most once per `SNAPSHOT_TTL_MS` per instance.
+      const [patterns, stored] = await Promise.all([
+        listFailurePatterns({ limit, encodingId, orderBy: "occurrenceCount" }),
+        listResolutionsForEncoding({ encodingId, limit: KNOWN_RESOLUTIONS_DEFAULT_LIMIT * 2 }),
+      ]);
       const snapshot: KnownPatternsSnapshot = {
         encodingId,
         engineVersion: CONVERSION_ENGINE_VERSION,
         patterns: patterns.map(toKnownPattern),
+        // The validator's second run happens inside this call. A resolution
+        // an admin accepted months ago is republished only if it still
+        // passes against today's rule tables.
+        resolutions: selectServableResolutions({ resolutions: stored, serveUnverified }),
         generatedAt: new Date().toISOString(),
       };
       entry = { snapshot, etag: computeEtag(snapshot) };
