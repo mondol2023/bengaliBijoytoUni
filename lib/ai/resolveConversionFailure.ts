@@ -142,8 +142,21 @@ function buildResolutionRequest(
   };
 }
 
+/**
+ * Usage counters carried across a reclaim. Reclaiming rewrites the whole
+ * document with `set`, which would otherwise reset `hitCount` to zero — and
+ * a resolution that has been served a thousand times losing its rank because
+ * someone re-ran the resolver is a silent regression in what gets published.
+ */
+interface CarriedCounters {
+  readonly hitCount: number;
+  readonly lastUsedAt: string | null;
+}
+
+const FRESH_COUNTERS: CarriedCounters = { hitCount: 0, lastUsedAt: null };
+
 type ClaimResult =
-  | { readonly state: "claimed" }
+  | { readonly state: "claimed"; readonly carried: CarriedCounters }
   | { readonly state: "reused"; readonly resolution: WithId<AiResolution> }
   | { readonly state: "conflict" };
 
@@ -167,15 +180,22 @@ async function claimResolutionSlot(
     const snap = await tx.get(docRef);
     if (!snap.exists) {
       tx.set(docRef, aiResolutionSchema.parse(pendingRecord));
-      return { state: "claimed" };
+      return { state: "claimed", carried: FRESH_COUNTERS };
     }
 
     const parsed = aiResolutionSchema.safeParse(snap.data());
     if (!parsed.success) {
       // Malformed/legacy record — never crash the API over it (§22); reclaim and retry.
+      // No counters carried: nothing in an unparseable document is trustworthy.
       tx.set(docRef, aiResolutionSchema.parse(pendingRecord));
-      return { state: "claimed" };
+      return { state: "claimed", carried: FRESH_COUNTERS };
     }
+
+    const carried: CarriedCounters = {
+      hitCount: parsed.data.hitCount,
+      lastUsedAt: parsed.data.lastUsedAt,
+    };
+    const reclaimed = { ...pendingRecord, ...carried };
 
     if (parsed.data.status === "completed") {
       return { state: "reused", resolution: { id: snap.id, ...parsed.data } };
@@ -184,15 +204,15 @@ async function claimResolutionSlot(
     if (parsed.data.status === "pending") {
       const ageMs = Date.now() - new Date(parsed.data.createdAt).getTime();
       if (ageMs > RESOLUTION_LIMITS.pendingClaimTimeoutMs) {
-        tx.set(docRef, aiResolutionSchema.parse(pendingRecord));
-        return { state: "claimed" };
+        tx.set(docRef, aiResolutionSchema.parse(reclaimed));
+        return { state: "claimed", carried };
       }
       return { state: "conflict" };
     }
 
     // "failed" (or a future "reviewed") — not a completed success, safe to retry.
-    tx.set(docRef, aiResolutionSchema.parse(pendingRecord));
-    return { state: "claimed" };
+    tx.set(docRef, aiResolutionSchema.parse(reclaimed));
+    return { state: "claimed", carried };
   });
 }
 
@@ -268,6 +288,12 @@ export async function resolveConversionFailure(
     isCertain: false,
     rawResponse: null,
     status: "pending",
+    // A new record has been served zero times. Both are written explicitly
+    // rather than left to the schema default, so the stored document has
+    // the field from the start and the first increment has something to
+    // add to.
+    hitCount: 0,
+    lastUsedAt: null,
     reviewDecision: null,
     reviewedBy: null,
     reviewedAt: null,
@@ -297,6 +323,7 @@ export async function resolveConversionFailure(
   if (!providerCallResult.ok) {
     const failedRecord: AiResolution = {
       ...pendingRecord,
+      ...claim.carried,
       status: "failed",
       // No dedicated error-code field exists on `aiResolutionSchema` (§14) — reusing
       // `reasoningSummary` for a short, safe code is preferred over inventing a duplicate field.
@@ -318,6 +345,10 @@ export async function resolveConversionFailure(
   const resolution = providerCallResult.value;
   const completedRecord: AiResolution = {
     patternId: input.patternId,
+    // From the claim, not from `pendingRecord`: a reclaimed slot may already
+    // have been served, and `set` would otherwise zero that history.
+    hitCount: claim.carried.hitCount,
+    lastUsedAt: claim.carried.lastUsedAt,
     encodingId: pendingRecord.encodingId,
     failedSequence: pendingRecord.failedSequence,
     lookupKey: pendingRecord.lookupKey,

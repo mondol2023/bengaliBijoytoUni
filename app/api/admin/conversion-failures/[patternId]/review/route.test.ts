@@ -73,6 +73,8 @@ function makeResolution(overrides: Partial<AiResolution> = {}): WithId<AiResolut
     alternativeCandidates: [],
     isCertain: true,
     rawResponse: null,
+    hitCount: 0,
+    lastUsedAt: null,
     status: "reviewed",
     reviewDecision: "accepted",
     reviewedBy: ADMIN_UID,

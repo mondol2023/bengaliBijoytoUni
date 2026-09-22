@@ -194,6 +194,8 @@ function makePendingRecord(overrides: Partial<AiResolution> = {}): AiResolution 
     alternativeCandidates: [],
     isCertain: false,
     rawResponse: null,
+    hitCount: 0,
+    lastUsedAt: null,
     status: "pending",
     reviewDecision: null,
     reviewedBy: null,
@@ -564,5 +566,65 @@ describe("resolveConversionFailure — the Phase 4 lookup key", () => {
     const a = makePattern({ engineVersion: "engine-1.2.3" });
     const b = makePattern({ engineVersion: "engine-9.9.9" });
     expect(computeResolutionLookupKey(a)).toBe(computeResolutionLookupKey(b));
+  });
+});
+
+describe("resolveConversionFailure — usage counters survive a reclaim", () => {
+  it("carries hitCount and lastUsedAt forward when a stale slot is reclaimed", async () => {
+    // Reclaiming rewrites the whole document with `set`. Without the carry
+    // forward, re-running the resolver on a resolution that had been served
+    // a thousand times would silently reset its rank to zero.
+    const provider = makeProvider({ resolve: vi.fn().mockResolvedValue(providerOk(makeSuccessfulResolution())) });
+    vi.mocked(getResolutionProvider).mockReturnValue(providerOk(provider));
+    vi.mocked(getFailurePatternDetail).mockResolvedValue(makeDetail(makePattern(), [makeOccurrence()]));
+
+    const staleCreatedAt = new Date(Date.now() - RESOLUTION_LIMITS.pendingClaimTimeoutMs - 1_000).toISOString();
+    const used = {
+      ...makePendingRecord({ status: "pending", createdAt: staleCreatedAt }),
+      hitCount: 1234,
+      lastUsedAt: "2026-09-20T00:00:00.000Z",
+    };
+    const mockDb = createMockDb({ seed: { [`${AI_RESOLUTIONS_COLLECTION}/${defaultKey()}`]: used } });
+    vi.mocked(getAdminDb).mockReturnValue(asFirestore(mockDb));
+
+    const result = await resolveConversionFailure(baseInput);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.resolution.hitCount).toBe(1234);
+    expect(result.value.resolution.lastUsedAt).toBe("2026-09-20T00:00:00.000Z");
+  });
+
+  it("starts a reclaimed malformed document from zero", async () => {
+    // Nothing in an unparseable document is trustworthy, including a count.
+    const provider = makeProvider({ resolve: vi.fn().mockResolvedValue(providerOk(makeSuccessfulResolution())) });
+    vi.mocked(getResolutionProvider).mockReturnValue(providerOk(provider));
+    vi.mocked(getFailurePatternDetail).mockResolvedValue(makeDetail(makePattern(), [makeOccurrence()]));
+
+    const mockDb = createMockDb({
+      seed: { [`${AI_RESOLUTIONS_COLLECTION}/${defaultKey()}`]: { garbage: true, hitCount: 9_000_000 } },
+    });
+    vi.mocked(getAdminDb).mockReturnValue(asFirestore(mockDb));
+
+    const result = await resolveConversionFailure(baseInput);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.resolution.hitCount).toBe(0);
+    expect(result.value.resolution.lastUsedAt).toBeNull();
+  });
+
+  it("gives a brand-new resolution a zero count rather than leaving it unset", async () => {
+    const provider = makeProvider({ resolve: vi.fn().mockResolvedValue(providerOk(makeSuccessfulResolution())) });
+    vi.mocked(getResolutionProvider).mockReturnValue(providerOk(provider));
+    vi.mocked(getFailurePatternDetail).mockResolvedValue(makeDetail(makePattern(), [makeOccurrence()]));
+    const mockDb = createMockDb();
+    vi.mocked(getAdminDb).mockReturnValue(asFirestore(mockDb));
+
+    await resolveConversionFailure(baseInput);
+
+    const persisted = mockDb.store.get(`${AI_RESOLUTIONS_COLLECTION}/${defaultKey()}`) as AiResolution;
+    expect(persisted.hitCount).toBe(0);
+    expect(persisted.lastUsedAt).toBeNull();
   });
 });

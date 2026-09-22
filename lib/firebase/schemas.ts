@@ -341,6 +341,17 @@ export const aiResolutionSchema = z.object({
   /** JSON-stringified raw provider response, length-capped, kept for audit only — never trusted directly. */
   rawResponse: z.string().nullable(),
   status: z.enum(["pending", "completed", "failed", "reviewed"]),
+  /**
+   * Phase 4 usage counters. `hitCount` orders what the public snapshot
+   * publishes; `lastUsedAt` is how a resolution nobody needs any more
+   * becomes visible. Written by batched atomic increments
+   * (`lib/conversionFailures/resolutionHits.ts`), never per served result.
+   *
+   * Defaulted, like the lookup fields above, so pre-Phase-4 records parse:
+   * they start at zero, which ranks them last rather than excluding them.
+   */
+  hitCount: z.number().int().nonnegative().default(0),
+  lastUsedAt: z.string().nullable().default(null),
   reviewDecision: z.enum(["accepted", "rejected"]).nullable(),
   reviewedBy: z.string().nullable(),
   reviewedAt: z.string().nullable(),

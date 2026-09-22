@@ -330,3 +330,36 @@ export function summarizeFailurePatterns(patterns: FailurePattern[]): FailurePat
 
   return { totalPatterns: patterns.length, totalOccurrences, byCategory, openCount, resolvedCount };
 }
+
+/**
+ * Applies a batch of accumulated resolution hits
+ * (`lib/conversionFailures/resolutionHits.ts`) as one atomic increment per
+ * document.
+ *
+ * `update`, not `set` with a merge: a hit on a document that has since been
+ * deleted should fail that one write rather than resurrect the record as a
+ * stub with nothing but a count on it. The whole batch is one commit, so a
+ * missing document fails the batch — which the counter reports and drops,
+ * matching its stated "ranking may be slightly stale" trade.
+ */
+export async function applyResolutionHits(
+  pending: readonly { resolutionId: string; hits: number; lastUsedAt: string }[],
+): Promise<void> {
+  if (pending.length === 0) return;
+  const db = getAdminDb();
+  const batch = db.batch();
+  for (const entry of pending) {
+    const ref = db.collection(AI_RESOLUTIONS_COLLECTION).doc(entry.resolutionId);
+    batch.update(ref, {
+      hitCount: FieldValue.increment(entry.hits),
+      lastUsedAt: entry.lastUsedAt,
+    });
+  }
+  await batch.commit();
+  // One document write per entry, whatever the coalesced hit count — the
+  // batching is exactly what keeps this number below the number of served
+  // results.
+  countWrites([
+    { collection: AI_RESOLUTIONS_COLLECTION, operation: "update", documents: pending.length },
+  ]);
+}

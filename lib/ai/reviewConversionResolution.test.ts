@@ -122,6 +122,8 @@ function makeResolution(overrides: Partial<AiResolution> = {}): AiResolution {
     isCertain: true,
     rawResponse: null,
     status: "completed",
+    hitCount: 0,
+    lastUsedAt: null,
     reviewDecision: null,
     reviewedBy: null,
     reviewedAt: null,
