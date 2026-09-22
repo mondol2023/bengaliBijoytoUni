@@ -12,6 +12,7 @@ import {
   type ValidationResult,
 } from "./validate";
 import { detectEncoding } from "./detectEncoding";
+import { buildOutputSegments, type OutputSegment } from "./segments";
 import { CONVERSION_ENGINE_VERSION, computeRulesHash } from "./version";
 
 export interface ConversionOutput {
@@ -27,6 +28,11 @@ export interface ConversionOutput {
    */
   sourceText: string;
   unicodeText: string;
+  /**
+   * `unicodeText` cut into markable runs, mapped and unmapped, in order.
+   * Always rejoins to `unicodeText` exactly — see `./segments.ts`.
+   */
+  outputSegments: OutputSegment[];
   validation: ValidationResult;
   /** `CONVERSION_ENGINE_VERSION` at the time of this conversion. */
   engineVersion: string;
@@ -115,6 +121,10 @@ export function convertLegacyText(
       encodingId: encoding.id,
       sourceText,
       unicodeText,
+      // Not segmented: every Bengali letter matched no CP1252 rule and is
+      // flagged unmapped, which is the very misreading this branch exists
+      // to correct. One mapped run matches the validation beside it.
+      outputSegments: [{ text: unicodeText, unmapped: false, sourceIndex: 0 }],
       validation: {
         valid: true,
         warnings: [ALREADY_UNICODE_MESSAGE],
@@ -132,6 +142,7 @@ export function convertLegacyText(
     encodingId: encoding.id,
     sourceText,
     unicodeText,
+    outputSegments: buildOutputSegments(tokens, unicodeText),
     validation,
     engineVersion: CONVERSION_ENGINE_VERSION,
     rulesHash: computeRulesHash(encoding),
@@ -172,6 +183,8 @@ export { normalizeSource } from "./normalizeSource";
 export type { SourceSignal, NormalizedSource } from "./normalizeSource";
 export { validateUnicodeOutput, formatUnmappedDetail, formatUnmappedDetails } from "./validate";
 export type { ValidationResult, UnmappedDetail } from "./validate";
+export { buildOutputSegments, joinSegments } from "./segments";
+export type { OutputSegment } from "./segments";
 export type { DetectionResult, EncodingScore } from "./detectEncoding";
 export { CONVERSION_ENGINE_VERSION, computeRulesHash } from "./version";
 export { FAILURE_CATEGORIES, classifyValidationWarning, classifyAppErrorCode } from "./classify";
