@@ -6,6 +6,7 @@ import { recordConversionFailures } from "@/lib/firebase/conversionFailures";
 import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";
 import { FAILURE_CATEGORIES } from "@/features/converter/engine/classify";
 import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
+import { readJsonBody } from "@/lib/security/readJsonBody";
 import { failResponder, toAppError } from "@/lib/errors/handlers";
 import { AppErrors } from "@/lib/errors/types";
 import { fileExtensionOnly } from "@/lib/privacy/fileName";
@@ -99,14 +100,14 @@ export async function POST(request: NextRequest) {
   });
   if (!rateLimit.ok) return fail(rateLimit.error);
 
-  let json: unknown;
-  try {
-    json = await request.json();
-  } catch {
-    return fail(AppErrors.validation("Expected a JSON body."));
-  }
+  // Metered rather than `request.json()`: the schema below bounds every
+  // field, but only after the whole body has been buffered, and this route
+  // takes bodies from anonymous callers. See lib/security/readJsonBody.ts
+  // for how the ceiling relates to the largest legitimate report.
+  const body = await readJsonBody(request);
+  if (!body.ok) return fail(body.error);
 
-  const parsed = bodySchema.safeParse(json);
+  const parsed = bodySchema.safeParse(body.value);
   if (!parsed.success) {
     return fail(
       AppErrors.validation("Invalid conversion-failure report.", {

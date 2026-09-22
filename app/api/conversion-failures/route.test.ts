@@ -188,3 +188,42 @@ describe("POST /api/conversion-failures: batched counts", () => {
     expect(JSON.stringify(recorded)).not.toContain("q3-layoffs-draft");
   });
 });
+
+describe("POST /api/conversion-failures body ceiling", () => {
+  beforeEach(() => {
+    vi.mocked(recordConversionFailures).mockClear();
+  });
+
+  it("refuses an oversized body with 413 and never reaches the writer", async () => {
+    // The schema would reject this too — but only after buffering it. The
+    // point of the ceiling is that nothing downstream, including zod, sees
+    // a payload this size at all.
+    const { MAX_JSON_BODY_BYTES } = await import("@/lib/security/readJsonBody");
+    const filler = "a".repeat(MAX_JSON_BODY_BYTES + 1024);
+    const response = await POST(makeRequest({ failures: [{ ...occurrence, errorReason: filler }] }));
+
+    expect(response.status).toBe(413);
+    expect(recordConversionFailures).not.toHaveBeenCalled();
+  });
+
+  it("still accepts a report at the largest size the schema allows", async () => {
+    // Guards against a ceiling set below the legitimate maximum, which
+    // would reject real reports and look like a client bug.
+    const maximal = {
+      ...occurrence,
+      failedSequence: "A".repeat(CONVERSION_FAILURE_LIMITS.maxFailedSequenceLength),
+      contextBefore: "b".repeat(CONVERSION_FAILURE_LIMITS.maxContextLength),
+      contextAfter: "c".repeat(CONVERSION_FAILURE_LIMITS.maxContextLength),
+      errorReason: "r".repeat(CONVERSION_FAILURE_LIMITS.maxErrorReasonLength),
+    };
+    const failures = Array.from({ length: CONVERSION_FAILURE_LIMITS.maxFailuresPerReport }, (_, i) => ({
+      ...maximal,
+      sessionId: `session-${i}`,
+    }));
+
+    const response = await POST(makeRequest({ failures }));
+
+    expect(response.status).toBe(200);
+    expect(recordConversionFailures).toHaveBeenCalledTimes(1);
+  });
+});
