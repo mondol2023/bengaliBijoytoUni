@@ -66,6 +66,41 @@ describe("getRequestIp", () => {
     const request = new Request("https://example.com");
     expect(getRequestIp(request)).toBe("unknown");
   });
+
+  it("treats an empty x-forwarded-for as absent rather than as an empty identity", () => {
+    const request = new Request("https://example.com", {
+      headers: { "x-forwarded-for": " , 10.0.0.1", "x-real-ip": "203.0.113.9" },
+    });
+    expect(getRequestIp(request, false)).toBe("203.0.113.9");
+  });
+
+  describe("on Vercel", () => {
+    it("prefers x-vercel-forwarded-for, which survives a proxy in front of Vercel", () => {
+      const request = new Request("https://example.com", {
+        headers: { "x-vercel-forwarded-for": "198.51.100.7", "x-forwarded-for": "10.9.9.9" },
+      });
+      expect(getRequestIp(request, true)).toBe("198.51.100.7");
+    });
+
+    it("falls back to x-forwarded-for, which Vercel overwrites, when its own header is absent", () => {
+      const request = new Request("https://example.com", { headers: { "x-forwarded-for": "198.51.100.8" } });
+      expect(getRequestIp(request, true)).toBe("198.51.100.8");
+    });
+  });
+
+  describe("off Vercel", () => {
+    it("ignores x-vercel-forwarded-for, which nothing but Vercel sets and a client could forge", () => {
+      const request = new Request("https://example.com", {
+        headers: { "x-vercel-forwarded-for": "1.2.3.4", "x-forwarded-for": "203.0.113.4" },
+      });
+      expect(getRequestIp(request, false)).toBe("203.0.113.4");
+    });
+
+    it("does not let a forged x-vercel-forwarded-for escape the unknown bucket", () => {
+      const request = new Request("https://example.com", { headers: { "x-vercel-forwarded-for": "1.2.3.4" } });
+      expect(getRequestIp(request, false)).toBe("unknown");
+    });
+  });
 });
 
 describe("the memory cap must not become a rate-limit bypass", () => {

@@ -116,17 +116,41 @@ export const UNKNOWN_CLIENT_IP = "unknown";
 
 /**
  * Best-effort client identifier for rate-limiting purposes only — never used
- * for authorization or attribution. Reads the platform-set forwarded-for
- * header (trustworthy behind Vercel/most PaaS reverse proxies; a
- * self-hosted deployment behind a different proxy should confirm which
- * header its proxy sets) and falls back to a constant bucket so requests
- * still get *some* shared limit rather than none when no proxy header is
- * present.
+ * for authorization or attribution.
+ *
+ * The deployment is Vercel, and the order below follows Vercel's documented
+ * request headers (https://vercel.com/docs/headers/request-headers):
+ *
+ * 1. `x-vercel-forwarded-for`, **only when running on Vercel** (`VERCEL=1`).
+ *    Vercel sets it to the client's public IP, and unlike
+ *    `x-forwarded-for` it survives a proxy placed in front of Vercel. Off
+ *    Vercel nothing sets it, so a client could forge it — hence the gate.
+ * 2. `x-forwarded-for`. On Vercel, the platform *overwrites* any value the
+ *    client sent ("we currently overwrite the X-Forwarded-For header and do
+ *    not forward external IPs ... to prevent IP spoofing"), so the first
+ *    entry is the real client. Elsewhere it is only as trustworthy as the
+ *    proxy in front of the app.
+ * 3. `x-real-ip`, which Vercel documents as identical to `x-forwarded-for`.
+ * 4. `UNKNOWN_CLIENT_IP`, a constant bucket. On Vercel one of the headers
+ *    above is always present, so this is a local-dev and misconfiguration
+ *    path; `sharedRateLimit.ts` keeps this bucket per-instance so it never
+ *    becomes one shared window for every unidentified caller.
+ *
+ * `onVercel` is a parameter only so the test can drive both branches.
  */
-export function getRequestIp(request: Request): string {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) return forwardedFor.split(",")[0]!.trim();
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) return realIp.trim();
+export function getRequestIp(request: Request, onVercel: boolean = process.env.VERCEL === "1"): string {
+  if (onVercel) {
+    const vercelForwardedFor = firstAddress(request.headers.get("x-vercel-forwarded-for"));
+    if (vercelForwardedFor) return vercelForwardedFor;
+  }
+  const forwardedFor = firstAddress(request.headers.get("x-forwarded-for"));
+  if (forwardedFor) return forwardedFor;
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
   return UNKNOWN_CLIENT_IP;
+}
+
+function firstAddress(header: string | null): string | null {
+  const first = header?.split(",")[0]?.trim();
+  return first ? first : null;
 }
