@@ -306,7 +306,13 @@ records), and the "N filled · K unresolved" breakdown is reported alongside
 it, never subtracted from it. Pinned by
 `features/usage/__tests__/conversionUsage.test.ts`. Question 3 stays held.
 
-### Blocked: the deployment topology
+### Was blocked: the deployment topology — resolved 2026-10-04
+
+**Answered: Vercel, serverless, potentially multiple concurrent instances.**
+The shared atomic counter described below is built: `e370f93` (cost cap)
+and `8d956b9` (rate limiter), with `516493a` for the client-IP half of the
+threat model's finding 4. The text below is kept as the record of why it
+waited.
 
 The repository does not say what this deploys onto — no `vercel.json`, no
 `Dockerfile`, no `Procfile`, `fly.toml`, `render.yaml` or `app.yaml`; CI runs

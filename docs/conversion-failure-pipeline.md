@@ -312,7 +312,7 @@ Admin (or API caller)
 requireAdminUser(request)                (lib/auth/session.ts)
         │  unauthenticated → 401 · authenticated non-admin → 403
         ▼
-checkRateLimit(`ai-resolve:${uid}`)      (lib/security/rateLimit.ts — RESOLUTION_LIMITS.resolveRateLimit)
+checkSharedRateLimit(`ai-resolve:${uid}`)  (lib/security/sharedRateLimit.ts — RESOLUTION_LIMITS.resolveRateLimit, held across instances)
         ▼
 resolveConversionFailure(...)            (lib/ai/resolveConversionFailure.ts — §7.2)
         │
@@ -574,7 +574,8 @@ throws under a simulated `window`, and no client-reachable directory references
   `firestore.rules` (stricter than `errorLogs`' owner-or-admin, because these collections
   contain full document text). Write is always `false` — everything goes through the Admin
   SDK server-side.
-- `POST /api/conversion-failures` is rate-limited like `/api/error-logs` (`checkRateLimit`),
+- `POST /api/conversion-failures` is rate-limited like `/api/error-logs` (`checkSharedRateLimit`,
+  shared across Vercel instances through a Firestore window counter),
   caps the number of failures accepted per request (`MAX_FAILURES_PER_REPORT`), and never
   trusts client-supplied `userId`/severity/timestamps.
 - `POST /api/admin/conversion-failures/{patternId}/resolve` is admin-only

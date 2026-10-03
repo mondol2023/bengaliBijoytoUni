@@ -7,11 +7,12 @@ be fetched on page load.
 
 Everything below is read off the code as it stands on
 `feat/font-conversion-hardening`. Where the answer depends on how the app is
-deployed, that is said rather than assumed: **nothing in this repository
-declares a hosting platform** — there is no `vercel.json`, and neither
-`next.config.ts`, `package.json` nor `README.md` names one. The deployment
-model is therefore an open question, and the findings are stated for both the
-single-instance and the multi-instance case.
+deployed, that is said rather than assumed. Until 2026-10-04 nothing in the
+repository declared a hosting platform, so findings 3 and 4 were written for
+both cases. **The maintainer has since answered: Vercel, serverless,
+potentially multiple concurrent instances**, and the repository is to be
+treated as a multi-instance deployment. Findings 3 and 4 are resolved on
+that basis; see their sections.
 
 ## Summary
 
@@ -19,8 +20,8 @@ single-instance and the multi-instance case.
 |---|---|---|---|
 | 1 | Body was buffered before any bound applied | Medium | **Fixed** — `lib/security/readJsonBody.ts`, 512 KiB ceiling |
 | 2 | Counts can be poisoned to choose the published top N | **High**, latent | **Closed** — `4c0f69a`, `f28fc32`; residual stated in §2 |
-| 3 | Rate limiter is per-instance and resets on cold start | Medium | Known and documented; not fixed here |
-| 4 | Rate-limit identity collapses to one bucket without a proxy header | Low | Not fixed — needs a deployment answer first |
+| 3 | Rate limiter is per-instance and resets on cold start | Medium | **Closed** — `8d956b9` (shared Firestore window counter); cost cap `e370f93` |
+| 4 | Rate-limit identity collapses to one bucket without a proxy header | Low | **Closed** — `516493a` (Vercel headers), `8d956b9` (unknown bucket never shared) |
 | 5 | Snapshot `limit` is caller-chosen up to 200 | Low | Accepted |
 
 Finding 2 is marked *latent* because it is not currently exploitable against
@@ -226,6 +227,71 @@ leftover. So this stays a question for the maintainer, not one the code can
 answer — and the shared-counter migration it would require was deliberately
 not built on a guess.
 
+**Resolved, 2026-10-04: Vercel, multi-instance.** The answer made finding 3
+work rather than documentation, and the work is done.
+
+- **`8d956b9`** — every rate-limited route (nine of them) now calls
+  `checkSharedRateLimit` (`lib/security/sharedRateLimit.ts`). The existing
+  in-memory limiter runs first; a request it admits is then checked against
+  one Firestore document per caller per aligned window
+  (`rateLimitWindows/{sha256(key)}_{windowStart}`), reserved in a
+  transaction through `lib/firebase/sharedCounter.ts`. The ceiling is now
+  `limit` per caller per window for the deployment, whatever the instance
+  count, and a cold start resets nothing that matters. Combined with finding
+  2, one IP's 1.5M claimed occurrences per window is now 1.5M, not 1.5M x N.
+- **`e370f93`** — the AI daily call budget (`lib/ai/costCap.ts`) moved to
+  the same store, one document per UTC day, because it had exactly the same
+  per-instance defect. Unlike the limiter it fails closed.
+
+**When the shared layer cannot answer**, the limiter keeps the per-instance
+verdict and logs (`DATABASE_ERROR` from `lib/security/sharedRateLimit`).
+That is the pre-fix bound, not no bound, and it keeps a Firestore outage from
+taking down document extraction, which never needed Firestore. Firebase not
+being configured at all takes the same path.
+
+**The cost analysis this section said was needed first.** A Firestore
+counter on a route whose purpose is to bound Firestore writes has to pay for
+itself, so here is the arithmetic:
+
+| Request | Before | After |
+|---|---|---|
+| Refused by the instance's own window | 0 | 0 — the local layer runs first |
+| Refused by the shared window | (was admitted on another instance) | 1 read, **0 writes** — a refusal writes nothing |
+| Admitted, `POST /api/conversion-failures` | 2 writes | 3 writes, +1 read |
+| Admitted, any other limited route | its own writes, if any | +1 read, +1 write |
+
+- *The attack case gets cheaper.* Per anonymous IP per 5-minute window on
+  the report route the most that can be written is now 30 x 3 = 90
+  documents, deployment-wide. Before it was 30 x 2 x N, with N set by the
+  autoscaler and, through load, partly by the attacker. Beyond that, a flood
+  costs one read per request, and only for requests that got past a local
+  window first.
+- *The honest case gets dearer.* An accepted report costs 3 writes instead
+  of 2, so the free tier's 20,000 writes a day covers about 6,600 accepted
+  reports instead of 10,000, if nothing else wrote. `GET .../known` pays one
+  write per uncached fetch. That fetch was read-only before, but a browser
+  revalidates at most once per 10 minutes, and a cache-missing request can
+  read up to 200 documents (finding 5), which the counter now bounds
+  deployment-wide.
+- *Hot-document contention is not a risk at these limits.* Admission is the
+  only thing that writes, so one window document takes at most `limit`
+  writes per window: 30 per 5 minutes on the report route, and 100 a day on
+  the AI budget. That is orders of magnitude under Firestore's
+  sustained-write guidance for a single document.
+- *Counted, not guessed.* Counter writes go through
+  `lib/firebase/writeMetrics.ts`'s `countWrites`, so the per-minute
+  `firestore_writes` log lines in `docs/write-volume.md` report them under
+  `rateLimitWindows` and `aiCallBudget`. Whether the +50% on the report
+  route matters can be measured instead of argued.
+
+**Storage.** One window document per caller per window accumulates until
+a Firestore TTL policy on `expireAt` deletes it. That policy is
+console-only, so it is listed in `docs/pending-manual-steps.md`. Until it
+exists the documents are small and inert, but they are not cleaned up.
+
+**What stays per-instance on purpose:** the unknown-IP bucket (finding 4),
+and every limit when Firebase is not configured.
+
 ## 4. Rate-limit identity
 
 `getRequestIp` reads `x-forwarded-for`, then `x-real-ip`, then returns the
@@ -243,6 +309,33 @@ is changed here. The function's doc comment already states the assumption.
 The check to run once the platform is known: confirm which header the proxy
 sets, and confirm it overwrites rather than appends.
 
+**Resolved, 2026-10-04: Vercel.** Both consequences are closed.
+
+- **Header trust, `516493a`.** Vercel's documented request headers
+  (https://vercel.com/docs/headers/request-headers) answer the check this
+  section asked for. Vercel *overwrites* `x-forwarded-for` ("we currently
+  overwrite the X-Forwarded-For header and do not forward external IPs.
+  This restriction is in place to prevent IP spoofing"). It also sets
+  `x-vercel-forwarded-for` to the same address, which survives a proxy
+  placed in front of Vercel. `getRequestIp` now prefers
+  `x-vercel-forwarded-for` when `VERCEL=1`, and only then, since off Vercel
+  a client could forge it. It falls back to `x-forwarded-for`, which on
+  Vercel is overwritten and therefore not client-controlled. If the
+  project's "system environment variables" setting is off, `VERCEL` is
+  unset and the `x-forwarded-for` path still gives the right answer.
+- **The one-bucket collapse, `8d956b9`.** On Vercel a client-IP header is
+  always present, so `"unknown"` is a local-dev and misconfiguration path.
+  It still had to be handled, because finding 3's fix would otherwise have
+  made it worse: a *shared* unknown bucket is one window for every
+  unidentified caller on every instance. `rateLimitIdentity` marks it
+  `shared: false`, so it keeps the old per-instance behaviour and never
+  reaches Firestore.
+
+Residual: if a proxy is ever put in front of Vercel, confirm that it does
+not strip `x-vercel-forwarded-for`. If it does, every request reads the
+proxy's address and all callers share that proxy's window. That is a
+deployment change, not a code one.
+
 ## 5. Caller-chosen snapshot size
 
 `?limit=` is validated as an integer in `[1, 200]`
@@ -250,7 +343,8 @@ sets, and confirm it overwrites rather than appends.
 with `maxEntries: 32`. A caller can vary `limit` to miss the cache
 deliberately — 200 distinct values against a 32-entry cache — turning each
 request into a Firestore query of up to 200 documents. Bounded by the 120/5min
-limit, and by finding 3's caveats on that limit.
+limit, which since finding 3's fix (`8d956b9`) holds per caller across the
+whole deployment rather than per instance.
 
 Accepted rather than fixed. The read is cheap, the ceiling is low, and the
 obvious hardening (snapping `limit` to a few allowed values) trades a real API

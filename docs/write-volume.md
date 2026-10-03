@@ -11,7 +11,10 @@ day, collection and operation. A write that later fails still counts: it cost
 a round trip and usually a retry, which is what a capacity question cares
 about.
 
-Instrumented today: `lib/firebase/conversionFailures.ts` only. That is the
+Instrumented today: `lib/firebase/conversionFailures.ts`, and the shared
+counters in `lib/firebase/sharedCounter.ts` (`rateLimitWindows`,
+`aiCallBudget`). Those counters add one write per admitted request; the
+arithmetic is in `docs/threat-model-public-failure-endpoints.md` §3. That is the
 collection the question is about, and the only one whose volume scales with
 anonymous traffic rather than with signed-in actions. Other writers adopt it
 by calling `countWrite` next to their own write — the module imports nothing,

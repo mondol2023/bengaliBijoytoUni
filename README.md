@@ -160,7 +160,7 @@ npm run test
 
 - **Server-verified authorization everywhere.** Role/tier lives only in Firebase custom claims and server-verified profiles — never trusted from a client-supplied field. Every privileged API route calls `requireAdminUser` or `requireServerUser` and scopes queries to the caller's own UID.
 - **Firestore/Storage rules** are default-deny, own-data-only, with admin/server-only collections (`usageOverrides`, `adminStats*`, `auditLogs`, `systemConfig`, `errorLogs`, `feedback`) that reject all client writes.
-- **Rate limiting** on unauthenticated-reachable, expensive routes (file extraction, session creation) — fixed-window, in-memory (see [limitations](#known-limitations) for the multi-instance caveat).
+- **Rate limiting** on unauthenticated-reachable, expensive routes (file extraction, session creation, failure reporting) and on the paid AI route — fixed-window, an in-memory layer per instance plus a shared Firestore window counter, so the limit holds across Vercel instances (`lib/security/sharedRateLimit.ts`).
 - **Security headers**: a Content-Security-Policy, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a restrictive `Permissions-Policy`, and HSTS in production.
 - **Safe error responses**: every route funnels errors through a shared handler that strips debug payloads (stack traces, internal causes) before they reach the client; full detail is logged server-side only.
 - **Audit log**: every mutating `/api/admin/*` action is recorded, viewable in the admin dashboard.
@@ -185,7 +185,7 @@ Disclosed here rather than left implicit:
 - **Mapping accuracy is iteratively converging, not finished.** Rare conjuncts and ambiguous legacy sequences are added as fixtures surface them.
 - **No live Firebase project is wired up by default** — Phases involving auth/Firestore/Storage haven't been exercised against a real sign-in flow in a browser; check for CSP console violations the first time this runs against a live project.
 - **`.doc` extraction is best-effort.** Unreliable extractions fail loudly rather than returning mangled text.
-- **The rate limiter is in-memory and per-server-instance**, not a distributed guarantee — fine for a single-instance deployment, but a multi-instance deployment gets a per-instance ceiling rather than a global one. Move to a shared store (Redis, or a Firestore transaction counter) if that gap matters.
+- **The shared rate limit degrades to per-instance when Firestore cannot answer.** The deployment is Vercel (multi-instance), so limits are held in a shared Firestore counter. If Firebase is not configured, or Firestore errors, each instance falls back to its own in-memory window: the old, weaker bound, never no bound. The AI daily call budget makes the opposite choice and refuses. See `docs/threat-model-public-failure-endpoints.md` §3.
 - **The CSP is pragmatic, not nonce-strict** (`'unsafe-inline'` on `script-src`/`style-src`), because Next.js's App Router streams hydration data through inline `<script>` tags and several components set inline `style` attributes. A nonce-based CSP would need per-request nonce plumbing through middleware and every layout.
 - **There is no true "before" preview of the raw legacy-encoded text** (see [Problems we faced](#problems-we-faced-and-how-we-handled-them)) — only the converted Unicode output is rendered.
 

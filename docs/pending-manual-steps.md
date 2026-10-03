@@ -23,6 +23,13 @@ Both are dry runs without `--apply`: run them bare first and read the counts.
    **both** `conversionFailures` and `failurePatterns`. A TTL policy is
    console-only; nothing in this repo can create one. Periods and the
    reasoning: `docs/data-retention.md`.
+4. **Create TTL policies for the shared counters**, on `expireAt`, for
+   `rateLimitWindows` and `aiCallBudget` (added in `8d956b9` and
+   `e370f93`). These need no redaction or backfill, because every counter
+   document is written with its `expireAt` already set: the end of its
+   rate-limit window, or 35 days after its budget day. Without the policies
+   nothing breaks, but a window document per caller per window accumulates
+   and is never deleted.
 
 `aiResolutions` is deliberately **not** in this list — see §5 below.
 
@@ -61,15 +68,22 @@ Supply real SutonnyMJ sample documents for the runner added in `6b6e33c`. It
 skips cleanly while the corpus directory is empty, so the suite stays green
 and the coverage stays absent — which is the point of listing it here.
 
-## 5. Deployment topology — the one open decision that blocks code
+## 5. Deployment topology — answered and closed
 
-See `docs/phase-5-conversion-with-fallback.md` §7 and
-`docs/threat-model-public-failure-endpoints.md` §3. The repository does not
-state what this deploys onto, so the question cannot be answered by reading
-it. If the answer is *serverless or multi-instance*, the in-memory cost cap
-and rate limiter must move to a shared atomic counter before either can be
-described as a control. If it is *a single long-running Node server*, the
-current in-memory approach is adequate and this item closes.
+**Answered 2026-10-04: Vercel, serverless, potentially multiple concurrent
+instances.** As this item said it would, that moved the cost cap and the
+rate limiter to a shared atomic counter: a Firestore document per counter,
+reserved in a transaction with `FieldValue.increment` (`e370f93`,
+`8d956b9`). Threat-model findings 3 and 4 are closed on that basis
+(`516493a`, and that document's §3 and §4).
+
+What is left for the maintainer, and none of it blocks code:
+
+- The two counter TTL policies, item 1.4 above.
+- Leave **"Enable access to System Environment Variables"** on in the Vercel
+  project (it is what sets `VERCEL=1`). If it is off, the client IP is
+  still read correctly from `x-forwarded-for`, which Vercel overwrites, but
+  a proxy placed in front of Vercel would then go unnoticed.
 
 ## 6. Backlog, not a task
 
