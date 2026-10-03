@@ -29,7 +29,7 @@ const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
 // .env files can't hold real newlines in a value; the setup doc has the
 // service account key pasted with literal "\n" escapes, unescaped here.
-const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\n/g, "\n");
+const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n");
 const storageBucket = process.env.FIREBASE_ADMIN_STORAGE_BUCKET;
 const firestoreEmulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
 
