@@ -24,7 +24,7 @@ import {
   listFailurePatterns,
   listResolutionsForEncoding,
 } from "@/lib/firebase/conversionFailures";
-import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
+import { checkSharedRateLimit, rateLimitIdentity } from "@/lib/security/sharedRateLimit";
 
 export const runtime = "nodejs";
 
@@ -151,8 +151,10 @@ export async function GET(request: NextRequest) {
   }
 
   const user = await getServerUser(request);
-  const rateLimit = checkRateLimit({
-    key: `known-patterns:${user ? `uid:${user.uid}` : `ip:${getRequestIp(request)}`}`,
+  const caller = rateLimitIdentity(request, user);
+  const rateLimit = await checkSharedRateLimit({
+    key: `known-patterns:${caller.id}`,
+    shared: caller.shared,
     ...RATE_LIMIT,
   });
   if (!rateLimit.ok) return fail(rateLimit.error);

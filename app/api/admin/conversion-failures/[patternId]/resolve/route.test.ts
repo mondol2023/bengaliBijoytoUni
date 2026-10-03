@@ -28,14 +28,15 @@ vi.mock("@/lib/ai/resolveConversionFailure", () => ({
   resolveConversionFailure: vi.fn(),
 }));
 
-vi.mock("@/lib/security/rateLimit", () => ({
-  checkRateLimit: vi.fn(),
-}));
+vi.mock("@/lib/security/sharedRateLimit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/security/sharedRateLimit")>();
+  return { ...actual, checkSharedRateLimit: vi.fn(async () => ({ ok: true })) };
+});
 
 import { requireAdminUser } from "@/lib/auth/session";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { resolveConversionFailure } from "@/lib/ai/resolveConversionFailure";
-import { checkRateLimit } from "@/lib/security/rateLimit";
+import { checkSharedRateLimit } from "@/lib/security/sharedRateLimit";
 import { POST } from "./route";
 
 const ADMIN_UID = "admin-uid-1";
@@ -88,7 +89,7 @@ beforeEach(() => {
   vi.mocked(requireAdminUser).mockReset();
   vi.mocked(writeAuditLog).mockReset().mockResolvedValue(undefined);
   vi.mocked(resolveConversionFailure).mockReset();
-  vi.mocked(checkRateLimit).mockReset().mockReturnValue({ ok: true });
+  vi.mocked(checkSharedRateLimit).mockReset().mockResolvedValue({ ok: true });
 });
 
 describe("POST /api/admin/conversion-failures/[patternId]/resolve — authentication/authorization", () => {
@@ -181,7 +182,7 @@ describe("POST /api/admin/conversion-failures/[patternId]/resolve — rate limit
   });
 
   it("returns 429 and never calls the resolution service when the rate limit is exceeded", async () => {
-    vi.mocked(checkRateLimit).mockReturnValue({
+    vi.mocked(checkSharedRateLimit).mockResolvedValue({
       ok: false,
       error: AppErrors.rateLimit("Too many requests — please wait a moment and try again.", { details: { retryAfterSeconds: 42 } }),
     });
@@ -200,7 +201,7 @@ describe("POST /api/admin/conversion-failures/[patternId]/resolve — rate limit
 
     await POST(makeRequest({ provider: "gemini" }), params());
 
-    expect(checkRateLimit).toHaveBeenCalledWith(expect.objectContaining({ key: `ai-resolve:${ADMIN_UID}` }));
+    expect(checkSharedRateLimit).toHaveBeenCalledWith(expect.objectContaining({ key: `ai-resolve:${ADMIN_UID}` }));
   });
 });
 

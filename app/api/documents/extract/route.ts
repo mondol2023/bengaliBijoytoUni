@@ -21,14 +21,14 @@ import { buildFailureOccurrence, buildSignalOccurrence } from "@/lib/conversionF
 import type { ErrorLog } from "@/lib/firebase/schemas";
 import { recordConversion, recordDocumentUpload } from "@/lib/firebase/recordActivity";
 import { getSystemConfigSafe } from "@/lib/firebase/systemConfig";
-import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
+import { checkSharedRateLimit, rateLimitIdentity } from "@/lib/security/sharedRateLimit";
 import { countWords } from "@/lib/utils/text";
 
 export const runtime = "nodejs";
 
 // Reachable without sign-in and does real PDF/DOCX/DOC parsing per call, so it
 // gets its own (generous but bounded) window rather than relying solely on
-// per-file size caps. See `lib/security/rateLimit.ts` for the caveats of an
+// per-file size caps. See `lib/security/sharedRateLimit.ts` for the caveats of an
 // in-memory, per-instance limiter.
 const RATE_LIMIT = { limit: 20, windowMs: 5 * 60 * 1000 };
 
@@ -86,8 +86,12 @@ export async function POST(request: NextRequest) {
   const startedAt = Date.now();
 
   const user = await getServerUser(request);
-  const rateLimitKey = `extract:${user ? `uid:${user.uid}` : `ip:${getRequestIp(request)}`}`;
-  const rateLimit = checkRateLimit({ key: rateLimitKey, ...RATE_LIMIT });
+  const caller = rateLimitIdentity(request, user);
+  const rateLimit = await checkSharedRateLimit({
+    key: `extract:${caller.id}`,
+    shared: caller.shared,
+    ...RATE_LIMIT,
+  });
   if (!rateLimit.ok) return fail(rateLimit.error);
 
   // Before `formData()`, which is what actually buffers the body.

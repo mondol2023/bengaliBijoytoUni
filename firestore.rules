@@ -145,5 +145,12 @@ service cloud.firestore {
     match /aiCallBudget/{day} {
       allow read, write: if false;
     }
+
+    // rateLimitWindows/{sha256(key)}_{windowStart} — the shared rate-limit
+    // windows (lib/security/sharedRateLimit.ts). Server-only both ways: a
+    // client write would reset its own limit.
+    match /rateLimitWindows/{window} {
+      allow read, write: if false;
+    }
   }
 }

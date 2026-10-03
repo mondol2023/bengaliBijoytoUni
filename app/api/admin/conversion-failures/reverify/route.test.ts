@@ -18,12 +18,15 @@ vi.mock("@/lib/firebase/reverifyPatterns", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/firebase/reverifyPatterns")>();
   return { ...actual, reverifyStoredPatterns: vi.fn() };
 });
-vi.mock("@/lib/security/rateLimit", () => ({ checkRateLimit: vi.fn() }));
+vi.mock("@/lib/security/sharedRateLimit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/security/sharedRateLimit")>();
+  return { ...actual, checkSharedRateLimit: vi.fn(async () => ({ ok: true })) };
+});
 
 import { requireAdminUser } from "@/lib/auth/session";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { reverifyStoredPatterns } from "@/lib/firebase/reverifyPatterns";
-import { checkRateLimit } from "@/lib/security/rateLimit";
+import { checkSharedRateLimit } from "@/lib/security/sharedRateLimit";
 import { CONVERSION_ENGINE_VERSION } from "@/features/converter/engine/version";
 import { POST } from "./route";
 
@@ -44,7 +47,7 @@ beforeEach(() => {
     ok: true,
     value: { uid: ADMIN_UID },
   } as unknown as Awaited<ReturnType<typeof requireAdminUser>>);
-  vi.mocked(checkRateLimit).mockReturnValue({ ok: true } as ReturnType<typeof checkRateLimit>);
+  vi.mocked(checkSharedRateLimit).mockResolvedValue({ ok: true });
   vi.mocked(reverifyStoredPatterns).mockResolvedValue({
     ok: true,
     value: { examined: 3, resolved: ["pattern-a"], reopened: ["pattern-c"] },
@@ -104,10 +107,10 @@ describe("POST /api/admin/conversion-failures/reverify", () => {
   });
 
   it("is rate limited", async () => {
-    vi.mocked(checkRateLimit).mockReturnValue({
+    vi.mocked(checkSharedRateLimit).mockResolvedValue({
       ok: false,
       error: AppErrors.rateLimit("Slow down.", { details: { retryAfterSeconds: 60 } }),
-    } as ReturnType<typeof checkRateLimit>);
+    });
     const response = await POST(makeRequest({}));
     expect(response.status).toBe(429);
     expect(reverifyStoredPatterns).not.toHaveBeenCalled();

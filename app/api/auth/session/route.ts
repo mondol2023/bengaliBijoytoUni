@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getAdminAuth, isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
-import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
+import { checkSharedRateLimit, rateLimitIdentity } from "@/lib/security/sharedRateLimit";
 import { failResponder, toAppError } from "@/lib/errors/handlers";
 import { AppErrors } from "@/lib/errors/types";
 
@@ -34,7 +34,12 @@ export async function POST(request: NextRequest) {
     return fail(AppErrors.unknown("Sessions aren't set up yet for this deployment."));
   }
 
-  const rateLimit = checkRateLimit({ key: `session:${getRequestIp(request)}`, ...RATE_LIMIT });
+  const caller = rateLimitIdentity(request, null);
+  const rateLimit = await checkSharedRateLimit({
+    key: `session:${caller.id}`,
+    shared: caller.shared,
+    ...RATE_LIMIT,
+  });
   if (!rateLimit.ok) return fail(rateLimit.error);
 
   let json: unknown;

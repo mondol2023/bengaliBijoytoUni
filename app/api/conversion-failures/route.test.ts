@@ -18,10 +18,10 @@ vi.mock("@/lib/auth/session", () => ({
   getServerUser: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock("@/lib/security/rateLimit", () => ({
-  checkRateLimit: vi.fn(() => ({ ok: true })),
-  getRequestIp: vi.fn(() => "127.0.0.1"),
-}));
+vi.mock("@/lib/security/sharedRateLimit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/security/sharedRateLimit")>();
+  return { ...actual, checkSharedRateLimit: vi.fn(async () => ({ ok: true })) };
+});
 
 import { recordConversionFailures } from "@/lib/firebase/conversionFailures";
 import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";

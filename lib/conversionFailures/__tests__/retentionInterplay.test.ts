@@ -132,8 +132,8 @@ describe("nothing writes expireAt into aiResolutions", () => {
     // `retention.ts` defines it; `disclosure.ts` explains it to a reader.
     // Every retention write goes through `retentionFields()`, which is the
     // next test's subject. The shared counters stamp their own `expireAt` on
-    // their own documents (`costCap.ts` computes it, `counterStore.ts`
-    // declares it, `sharedCounter.ts` writes it) — and `sharedCounter.ts`
+    // their own documents (`costCap.ts` and `sharedRateLimit.ts` compute
+    // it, `counterStore.ts` declares it, `sharedCounter.ts` writes it) — and `sharedCounter.ts`
     // refuses any collection outside `SHARED_COUNTER_COLLECTIONS`, which its
     // own test pins as excluding `aiResolutions`. Any other file appearing
     // here is a new place the field is being handled by hand, and worth a
@@ -150,6 +150,7 @@ describe("nothing writes expireAt into aiResolutions", () => {
       "lib/firebase/sharedCounter.ts",
       "lib/privacy/disclosure.ts",
       "lib/security/counterStore.ts",
+      "lib/security/sharedRateLimit.ts",
     ]);
   });
 

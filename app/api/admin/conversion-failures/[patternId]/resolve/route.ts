@@ -6,7 +6,7 @@ import { writeAuditLog } from "@/lib/firebase/audit";
 import { resolveConversionFailure } from "@/lib/ai/resolveConversionFailure";
 import { SUPPORTED_PROVIDER_IDS } from "@/lib/ai/types";
 import { RESOLUTION_LIMITS } from "@/lib/ai/limits";
-import { checkRateLimit } from "@/lib/security/rateLimit";
+import { checkSharedRateLimit } from "@/lib/security/sharedRateLimit";
 import { failResponder, logAppError } from "@/lib/errors/handlers";
 import { AppErrors } from "@/lib/errors/types";
 
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { patternId } = await params;
   if (!patternId) return fail(AppErrors.validation("Missing failure pattern id."));
 
-  const rate = checkRateLimit({
+  const rate = await checkSharedRateLimit({
     key: `ai-resolve:${auth.value.uid}`,
     limit: RESOLUTION_LIMITS.resolveRateLimit.limit,
     windowMs: RESOLUTION_LIMITS.resolveRateLimit.windowMs,

@@ -1,17 +1,16 @@
 /**
- * A pragmatic first layer of abuse protection for routes reachable without
- * authentication (document extraction, session creation) — fixed-window
- * counting, in memory, per server instance. This is deliberately not a
- * distributed rate limiter: on a multi-instance deployment each instance
- * enforces its own window, so the effective ceiling is `limit × instance
- * count`, and every counter resets on a cold start/redeploy. Disclosed here
- * rather than hidden, matching this codebase's existing pattern for a
- * bounded-but-honest safeguard (e.g. the admin user search's exact-match-only
- * limitation). Good enough to blunt casual scripted abuse of expensive
- * routes (PDF/DOCX parsing, Admin SDK token verification) on a single-
- * instance deployment; swap for a shared store (Redis, or a Firestore
- * transaction counter) if a multi-instance deployment needs a hard global
- * ceiling instead of a per-instance one.
+ * The per-instance layer of rate limiting: fixed-window counting, in memory.
+ * Routes do not call this directly any more — they call
+ * `checkSharedRateLimit` (`./sharedRateLimit.ts`), which runs this first and
+ * then a Firestore window counter shared by every instance.
+ *
+ * On its own this is not a deployment-wide limit. The deployment is Vercel
+ * (serverless, potentially many instances), so each instance enforces its
+ * own window, the effective ceiling is `limit × instance count`, and every
+ * counter resets on a cold start/redeploy. It stays as the first layer
+ * because it is free: a caller hammering one instance is refused here
+ * without a Firestore read. And it is the bound that remains when the shared
+ * layer cannot answer — Firebase not configured, or Firestore failing.
  */
 import { AppErrors } from "@/lib/errors/types";
 import type { RateLimitError } from "@/lib/errors/types";
@@ -112,6 +111,9 @@ export function checkRateLimit({ key, limit, windowMs }: RateLimitOptions): Rate
   };
 }
 
+/** What `getRequestIp` returns when no proxy header names the client. Never shared across instances — see `sharedRateLimit.ts`. */
+export const UNKNOWN_CLIENT_IP = "unknown";
+
 /**
  * Best-effort client identifier for rate-limiting purposes only — never used
  * for authorization or attribution. Reads the platform-set forwarded-for
@@ -126,5 +128,5 @@ export function getRequestIp(request: Request): string {
   if (forwardedFor) return forwardedFor.split(",")[0]!.trim();
   const realIp = request.headers.get("x-real-ip");
   if (realIp) return realIp.trim();
-  return "unknown";
+  return UNKNOWN_CLIENT_IP;
 }

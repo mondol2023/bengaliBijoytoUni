@@ -5,7 +5,7 @@ import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { recordConversionFailures } from "@/lib/firebase/conversionFailures";
 import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";
 import { FAILURE_CATEGORIES } from "@/features/converter/engine/classify";
-import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
+import { checkSharedRateLimit, rateLimitIdentity } from "@/lib/security/sharedRateLimit";
 import { readJsonBody } from "@/lib/security/readJsonBody";
 import { failResponder, toAppError } from "@/lib/errors/handlers";
 import { AppErrors } from "@/lib/errors/types";
@@ -94,8 +94,10 @@ export async function POST(request: NextRequest) {
   }
 
   const user = await getServerUser(request);
-  const rateLimit = checkRateLimit({
-    key: `conversion-failures:${user ? `uid:${user.uid}` : `ip:${getRequestIp(request)}`}`,
+  const caller = rateLimitIdentity(request, user);
+  const rateLimit = await checkSharedRateLimit({
+    key: `conversion-failures:${caller.id}`,
+    shared: caller.shared,
     ...RATE_LIMIT,
   });
   if (!rateLimit.ok) return fail(rateLimit.error);

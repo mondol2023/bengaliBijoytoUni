@@ -3,7 +3,7 @@ import { extractDocumentText } from "@/features/documents/extract";
 import { rejectOversizeFile, rejectOversizeRequest } from "@/features/documents/uploadGuard";
 import { getServerUser } from "@/lib/auth/session";
 import { getSystemConfigSafe } from "@/lib/firebase/systemConfig";
-import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
+import { checkSharedRateLimit, rateLimitIdentity } from "@/lib/security/sharedRateLimit";
 import { failResponder } from "@/lib/errors/handlers";
 import { AppErrors } from "@/lib/errors/types";
 
@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 
 // Reachable without sign-in and does real PDF/DOCX/DOC parsing per call, so it
 // gets its own (generous but bounded) window rather than relying solely on
-// per-file size caps. See `lib/security/rateLimit.ts` for the caveats of an
+// per-file size caps. See `lib/security/sharedRateLimit.ts` for the caveats of an
 // in-memory, per-instance limiter.
 const RATE_LIMIT = { limit: 20, windowMs: 5 * 60 * 1000 };
 
@@ -32,8 +32,12 @@ export async function POST(request: NextRequest) {
   }
 
   const user = await getServerUser(request);
-  const rateLimitKey = `extract-text:${user ? `uid:${user.uid}` : `ip:${getRequestIp(request)}`}`;
-  const rateLimit = checkRateLimit({ key: rateLimitKey, ...RATE_LIMIT });
+  const caller = rateLimitIdentity(request, user);
+  const rateLimit = await checkSharedRateLimit({
+    key: `extract-text:${caller.id}`,
+    shared: caller.shared,
+    ...RATE_LIMIT,
+  });
   if (!rateLimit.ok) return fail(rateLimit.error);
 
   // Before `formData()`, which is what actually buffers the body.

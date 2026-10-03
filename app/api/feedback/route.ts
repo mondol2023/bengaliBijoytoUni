@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getServerUser } from "@/lib/auth/session";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { FEEDBACK_LIMITS, writeFeedback } from "@/lib/firebase/feedback";
-import { checkRateLimit, getRequestIp } from "@/lib/security/rateLimit";
+import { checkSharedRateLimit, rateLimitIdentity } from "@/lib/security/sharedRateLimit";
 import { failResponder, toAppError } from "@/lib/errors/handlers";
 import { AppErrors } from "@/lib/errors/types";
 
@@ -47,8 +47,10 @@ export async function POST(request: NextRequest) {
   }
 
   const user = await getServerUser(request);
-  const rateLimit = checkRateLimit({
-    key: `feedback:${user ? `uid:${user.uid}` : `ip:${getRequestIp(request)}`}`,
+  const caller = rateLimitIdentity(request, user);
+  const rateLimit = await checkSharedRateLimit({
+    key: `feedback:${caller.id}`,
+    shared: caller.shared,
     ...RATE_LIMIT,
   });
   if (!rateLimit.ok) return fail(rateLimit.error);

@@ -5,7 +5,7 @@ import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { reviewConversionResolution, REVIEW_DECISIONS } from "@/lib/ai/reviewConversionResolution";
 import { RESOLUTION_LIMITS } from "@/lib/ai/limits";
-import { checkRateLimit } from "@/lib/security/rateLimit";
+import { checkSharedRateLimit } from "@/lib/security/sharedRateLimit";
 import { failResponder, logAppError } from "@/lib/errors/handlers";
 import { AppErrors } from "@/lib/errors/types";
 
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { patternId } = await params;
   if (!patternId) return fail(AppErrors.validation("Missing failure pattern id."));
 
-  const rate = checkRateLimit({
+  const rate = await checkSharedRateLimit({
     key: `ai-review:${auth.value.uid}`,
     limit: RESOLUTION_LIMITS.reviewRateLimit.limit,
     windowMs: RESOLUTION_LIMITS.reviewRateLimit.windowMs,
