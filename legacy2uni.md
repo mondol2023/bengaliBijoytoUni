@@ -102,7 +102,9 @@ Implement one shared pipeline with this order and document it in a short diagram
 - Validate and size-limit every input to the reporting endpoint. Prevent injection (parameterized queries only).
 - Flag any consent or disclosure concern for storing user text.
 
-### Phase 7 — Verification — 🔄 In progress (started 2026-10-04)
+### Phase 7 — Verification — ✅ Done 2026-10-04 (`e6e1146` concurrent-write test, `d1e0b62` the fix it found; 1397/1397 tests in 91 files, tsc, lint, build all exit 0)
+- *Coverage map:* root-cause fixes — the E1–E6 regression tests; fingerprinting/normalization — `normalizeSource` and `patternId` tests; cache eviction/versioning — `lib/cache` (`keys`, `memoryCache`, `browserCache`) tests; pipeline ordering — `runConversion.test`; AI fallback with a mocked provider — `resolveConversionFailure.test`; re-check marking resolved — `reverify` tests and the re-verification block of `conversionFailures.test.ts`; atomic upsert under concurrent writes — `conversionFailures.concurrency.test.ts`.
+- *Concurrency caveat:* that test runs against a fake that models Firestore's transaction retry (serializable commits, five attempts), not the emulator — no JDK here, so an emulator run is **UNVERIFIED**. It found a real bug: a report that lost the race to create a pattern was counted as a create in the write metrics (fixed in `d1e0b62`).
 - Unit tests: converter fixes (one per root cause), fingerprinting/normalization, cache eviction and versioning, pipeline ordering.
 - Integration tests: atomic upsert under concurrent writes, AI fallback with a mocked provider, re-check marking an error as resolved.
 - Run the full test suite, linter, and type-check. Paste the actual output. Do not just claim they passed.
@@ -111,11 +113,11 @@ Implement one shared pipeline with this order and document it in a short diagram
 
 - [ ] A written error report with a ranked taxonomy and evidence exists. — *Not in the repo: the Phase 1 report was given in-session; only its E1–E6 labels survive, in commit subjects.*
 - [x] Each confirmed root cause is fixed and covered by a regression test. — E1–E6 commits above, each touching a test file.
-- [x] Every conversion error is stored once per fingerprint with an accurate `occurrence_count`. — deterministic `patternId`, transactional `FieldValue.increment` (`lib/firebase/conversionFailures.ts`). Concurrent-write test: Phase 7.
+- [x] Every conversion error is stored once per fingerprint with an accurate `occurrence_count`. — deterministic `patternId`, transactional `FieldValue.increment` (`lib/firebase/conversionFailures.ts`). Concurrent-write test: `e6e1146` (modelled contention; emulator run unverified).
 - [ ] The most frequent errors and the most-used AI results are served from the cache, and the cache invalidates when `converter_version` or `prompt_version` changes. — *Partly.* Served from the cached known-patterns snapshot, keys carry engine version + rules hash (`lib/cache/keys.ts`). `promptVersion` is in the `aiResolutions` dedup key only; an accepted resolution deliberately survives a prompt bump and is re-validated before serving instead.
 - [x] A failing input recurring triggers a converter re-check first, then falls back to the stored result or AI. — `runConversion` (engine first, store second). No live AI by design (pipeline doc §2.1). Shipped behind `NEXT_PUBLIC_ENABLE_FALLBACK_PIPELINE`, off.
 - [x] Reporting failures never break or slow the conversion UX. — fire-and-forget `keepalive`, `reportBuffer` swallows sync and async flush failures (pinned by its tests).
-- [ ] Migrations run up and down cleanly. All tests, lint, and type-check pass. — *Partly.* Tests/lint/tsc pass. No migration framework (Firestore); the two one-way scripts (`redactLegacyFailures.mjs`, `backfillRetention.mjs`) have never been run.
+- [ ] Migrations run up and down cleanly. All tests, lint, and type-check pass. — *Partly.* Tests/lint/tsc/build pass (Phase 7). No migration framework (Firestore); the two one-way scripts (`redactLegacyFailures.mjs`, `backfillRetention.mjs`) have never been run.
 - [x] No new hardcoded secrets. No raw sensitive user text stored. — Guard A + `scripts/secretScan.mjs`; privacy bound `abae9f8`. Rows written before it still hold text until the redaction script is run.
 
 ## 8. Output format
