@@ -10,12 +10,17 @@ import {
   type KnownPatternsSnapshot,
 } from "@/lib/conversionFailures/knownPatterns";
 import { KNOWN_RESOLUTIONS_DEFAULT_LIMIT } from "@/lib/conversionFailures/knownResolutions";
+import {
+  publishablePatterns,
+  publishableResolutions,
+} from "@/lib/conversionFailures/publishable";
 import { selectServableResolutions } from "@/lib/conversionFailures/selectResolutions";
 import { isServeUnverifiedAiEnabled } from "@/lib/conversionFailures/serveFlags";
 import { AppErrors } from "@/lib/errors/types";
 import { failResponder, toAppError } from "@/lib/errors/handlers";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import {
+  getFailurePatternStatuses,
   listFailurePatterns,
   listResolutionsForEncoding,
 } from "@/lib/firebase/conversionFailures";
@@ -98,6 +103,12 @@ function cacheHeaders(etag: string): Record<string, string> {
  * `lib/conversionFailures/selectResolutions.ts` builds each entry field by
  * field rather than forwarding a stored document. Nothing here is on the conversion path: the
  * converter produces the same output whether this endpoint answers or not.
+ *
+ * Both arrays are filtered by each pattern's **current** stored status at
+ * build time (`lib/conversionFailures/publishable.ts`): only an `open`
+ * pattern, and only a resolution whose provenance pattern is `open`, is
+ * published. A pattern the re-verification sweep marks `resolved` drops out
+ * of the next build with no write beyond that status change.
  */
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -156,20 +167,30 @@ export async function GET(request: NextRequest) {
     let entry = await snapshotCache.get(cacheKey);
 
     if (entry === undefined) {
-      // Two reads per snapshot build rather than one, both bounded and both
-      // paid at most once per `SNAPSHOT_TTL_MS` per instance.
+      // Three reads per snapshot build, all bounded and all paid at most
+      // once per `SNAPSHOT_TTL_MS` per instance.
       const [patterns, stored] = await Promise.all([
         listFailurePatterns({ limit, encodingId, orderBy: "occurrenceCount" }),
         listResolutionsForEncoding({ encodingId, limit: KNOWN_RESOLUTIONS_DEFAULT_LIMIT * 2 }),
       ]);
+      // A third, batched read: the current status of each resolution's
+      // provenance pattern. Read rather than taken from `patterns` above,
+      // because a resolution's pattern need not be in this encoding's top N.
+      const statusByPatternId = await getFailurePatternStatuses(
+        stored.map((resolution) => resolution.patternId),
+      );
       const snapshot: KnownPatternsSnapshot = {
         encodingId,
         engineVersion: CONVERSION_ENGINE_VERSION,
-        patterns: patterns.map(toKnownPattern),
+        patterns: publishablePatterns(patterns).map(toKnownPattern),
         // The validator's second run happens inside this call. A resolution
         // an admin accepted months ago is republished only if it still
-        // passes against today's rule tables.
-        resolutions: selectServableResolutions({ resolutions: stored, serveUnverified }),
+        // passes against today's rule tables — and only while the gap it
+        // fills is still open.
+        resolutions: selectServableResolutions({
+          resolutions: publishableResolutions(stored, statusByPatternId),
+          serveUnverified,
+        }),
         generatedAt: new Date().toISOString(),
       };
       entry = { snapshot, etag: computeEtag(snapshot) };

@@ -272,6 +272,32 @@ export async function getFailurePatternById(patternId: string): Promise<WithId<F
   return parsed.success ? { id: patternSnap.id, ...parsed.data } : null;
 }
 
+/**
+ * The current stored `status` of each named pattern, in one batched read —
+ * what the public snapshot joins its resolutions against
+ * (`lib/conversionFailures/publishable.ts`).
+ *
+ * A pattern that does not exist, or does not parse, is simply absent from the
+ * map; the caller treats absent as "nothing justifies publishing". No read is
+ * made for an empty list.
+ */
+export async function getFailurePatternStatuses(
+  patternIds: readonly string[],
+): Promise<Map<string, FailurePattern["status"]>> {
+  const statuses = new Map<string, FailurePattern["status"]>();
+  const unique = [...new Set(patternIds.filter((id) => id.length > 0))];
+  if (unique.length === 0) return statuses;
+
+  const db = getAdminDb();
+  const snaps = await db.getAll(...unique.map((id) => db.collection(PATTERNS_COLLECTION).doc(id)));
+  for (const snap of snaps) {
+    if (!snap.exists) continue;
+    const parsed = failurePatternSchema.safeParse(snap.data());
+    if (parsed.success) statuses.set(snap.id, parsed.data.status);
+  }
+  return statuses;
+}
+
 /** One pattern plus its most recent occurrences — the admin detail page's single data source. */
 export async function getFailurePatternDetail(patternId: string): Promise<FailurePatternDetail | null> {
   const db = getAdminDb();

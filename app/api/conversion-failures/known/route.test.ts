@@ -16,6 +16,7 @@ vi.mock("@/lib/firebase/admin", () => ({
 }));
 
 vi.mock("@/lib/firebase/conversionFailures", () => ({
+  getFailurePatternStatuses: vi.fn(),
   listFailurePatterns: vi.fn(),
   listResolutionsForEncoding: vi.fn(),
 }));
@@ -30,6 +31,7 @@ vi.mock("@/lib/security/rateLimit", () => ({
 }));
 
 import {
+  getFailurePatternStatuses,
   listFailurePatterns,
   listResolutionsForEncoding,
 } from "@/lib/firebase/conversionFailures";
@@ -66,6 +68,8 @@ function makeRequest(query: string, headers: Record<string, string> = {}): NextR
 describe("GET /api/conversion-failures/known", () => {
   beforeEach(() => {
     state.adminConfigured = true;
+    vi.mocked(getFailurePatternStatuses).mockReset();
+    vi.mocked(getFailurePatternStatuses).mockResolvedValue(new Map([["pattern-abc", "open"]]));
     vi.mocked(listResolutionsForEncoding).mockReset();
     vi.mocked(listResolutionsForEncoding).mockResolvedValue([]);
     vi.mocked(listFailurePatterns).mockReset();
@@ -132,6 +136,8 @@ describe("GET /api/conversion-failures/known", () => {
 describe("GET /api/conversion-failures/known: ETag", () => {
   beforeEach(() => {
     state.adminConfigured = true;
+    vi.mocked(getFailurePatternStatuses).mockReset();
+    vi.mocked(getFailurePatternStatuses).mockResolvedValue(new Map([["pattern-abc", "open"]]));
     vi.mocked(listResolutionsForEncoding).mockReset();
     vi.mocked(listResolutionsForEncoding).mockResolvedValue([]);
     vi.mocked(listFailurePatterns).mockReset();
@@ -215,6 +221,8 @@ describe("GET /api/conversion-failures/known: degraded", () => {
 
   it("fails cleanly when the query throws", async () => {
     state.adminConfigured = true;
+    vi.mocked(getFailurePatternStatuses).mockReset();
+    vi.mocked(getFailurePatternStatuses).mockResolvedValue(new Map([["pattern-abc", "open"]]));
     vi.mocked(listResolutionsForEncoding).mockReset();
     vi.mocked(listResolutionsForEncoding).mockResolvedValue([]);
     vi.mocked(listFailurePatterns).mockRejectedValue(new Error("firestore is down"));
@@ -275,6 +283,8 @@ describe("GET /api/conversion-failures/known: resolutions", () => {
     state.adminConfigured = true;
     vi.mocked(listFailurePatterns).mockReset();
     vi.mocked(listFailurePatterns).mockResolvedValue([]);
+    vi.mocked(getFailurePatternStatuses).mockReset();
+    vi.mocked(getFailurePatternStatuses).mockResolvedValue(new Map([["pattern-abc", "open"]]));
     vi.mocked(listResolutionsForEncoding).mockReset();
     vi.mocked(listResolutionsForEncoding).mockResolvedValue([]);
     vi.unstubAllEnvs();
@@ -372,5 +382,76 @@ describe("GET /api/conversion-failures/known: resolutions", () => {
 
     expect((await response.json()).resolutions).toStrictEqual([]);
     expect(listResolutionsForEncoding).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Finding 2 / open question 3, at the route: the status is the only input
+ * that changes between the two builds, and nothing is written in between.
+ */
+describe("GET /api/conversion-failures/known: publication follows current status", () => {
+  beforeEach(() => {
+    state.adminConfigured = true;
+    vi.mocked(listFailurePatterns).mockReset();
+    vi.mocked(listResolutionsForEncoding).mockReset();
+    vi.mocked(getFailurePatternStatuses).mockReset();
+    vi.unstubAllEnvs();
+  });
+
+  it("publishes a pattern and its resolution while open, and neither once resolved", async () => {
+    let status: "open" | "resolved" = "open";
+    const resolution = storedResolution({ patternId: "pattern-abc" });
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([resolution] as never);
+    vi.mocked(listFailurePatterns).mockImplementation(
+      async () => [storedPattern({ id: "pattern-abc", status })] as never,
+    );
+    vi.mocked(getFailurePatternStatuses).mockImplementation(
+      async () => new Map([["pattern-abc", status]]),
+    );
+    const resolutionBefore = JSON.stringify(resolution);
+
+    const first = await (await GET(makeRequest("?encodingId=bijoy&limit=199"))).json();
+    expect(first.patterns.map((p: { failedSequence: string }) => p.failedSequence)).toStrictEqual([
+      "Av",
+    ]);
+    expect(first.resolutions).toHaveLength(1);
+
+    // The only change: what the re-verification sweep would write.
+    status = "resolved";
+
+    // A second cache key, so this is a fresh build rather than the cached
+    // first one (the per-instance cache captures its clock at construction,
+    // so fake timers cannot age it). The read count below proves both were builds.
+    const second = await (await GET(makeRequest("?encodingId=bijoy&limit=196"))).json();
+    expect(second.patterns).toStrictEqual([]);
+    expect(second.resolutions).toStrictEqual([]);
+
+    // Nothing was written to the resolution to make that happen.
+    expect(JSON.stringify(resolution)).toBe(resolutionBefore);
+    expect(listFailurePatterns).toHaveBeenCalledTimes(2);
+    expect(listResolutionsForEncoding).toHaveBeenCalledTimes(2);
+  });
+
+  it("withholds a resolution whose pattern no longer exists", async () => {
+    vi.mocked(listFailurePatterns).mockResolvedValue([]);
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([
+      storedResolution({ patternId: "pattern-expired" }),
+    ] as never);
+    vi.mocked(getFailurePatternStatuses).mockResolvedValue(new Map());
+
+    const body = await (await GET(makeRequest("?encodingId=bijoy&limit=198"))).json();
+    expect(body.resolutions).toStrictEqual([]);
+  });
+
+  it("asks for the provenance pattern of every stored resolution", async () => {
+    vi.mocked(listFailurePatterns).mockResolvedValue([]);
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([
+      storedResolution({ patternId: "p-1" }),
+      storedResolution({ id: "resolution-2", patternId: "p-2", lookupKey: "lookup-2" }),
+    ] as never);
+    vi.mocked(getFailurePatternStatuses).mockResolvedValue(new Map());
+
+    await GET(makeRequest("?encodingId=bijoy&limit=197"));
+    expect(getFailurePatternStatuses).toHaveBeenCalledWith(["p-1", "p-2"]);
   });
 });
