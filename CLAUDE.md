@@ -192,5 +192,7 @@ The two are never interchangeable on screen, and the distinction is functional, 
 
 Per `PROGRESS.md`: prior work on this codebase followed "one phase at a time — implement,
 validate (typecheck/lint/test/build), report, then pause for explicit go-ahead before the
-next phase." If `PROGRESS.md` shows an unstarted phase (currently: Phase 10, final
-verification), don't start it without being asked.
+next phase." If `PROGRESS.md` shows an unstarted phase, don't start it without being asked.
+As of 2026-10-04 every `PROGRESS.md` phase is done (Phase 10's four checks pass); the
+conversion-failure hardening is tracked phase by phase in `legacy2uni.md` (Phase 7,
+verification, in progress).
