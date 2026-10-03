@@ -1,6 +1,12 @@
 # Conversion Failure Intelligence Pipeline
 
 Status: **Phases 1–9 implemented** (failure capture, patterns, provider-agnostic AI resolution library, the server-side resolution service + admin API route that persists candidates into `aiResolutions`, the server-side admin accept/reject review workflow — see §7.4 — the system-wide invariant tests of §10, and the §9 admin UI). Both the list view (`/admin/conversion-failures`) and the pattern detail view (`/admin/conversion-failures/[patternId]`) ship, with working "Resolve with Gemini/OpenAI" and accept/reject controls wired through `hooks/useConversionFailureDetail.ts`.
+Phase numbering: this file uses **two** schemes. The *build* phases (the status line above,
+"§7.2 Phase 6", "§7.4 Phase 7", "Phase 5's" prompt version, and "Added in Phase 6" in §3.3)
+are the order this pipeline was first built in. The *hardening* phases of `legacy2uni.md`
+(labels "Phase 2", "Phase 4" in §3.3, and "Phase 6 §4" in §2.1) came later. Read a phase
+number against the section it sits in; "Phase 7" of `legacy2uni.md` is verification, not
+the §7.4 review workflow.
 Owner: conversion engine / admin tooling
 Related: `docs/firebase-setup.md`, `lib/firebase/errorLog.ts`, `lib/firebase/feedback.ts`
 
@@ -84,7 +90,7 @@ context across users.
 | `encodingId` | `string \| null` | `EncodingDefinition.id`, or `null` if auto-detect failed before an encoding was chosen. |
 | `engineVersion` | `string` | `CONVERSION_ENGINE_VERSION` at the time of failure (new, see §4). |
 | `rulesHash` | `string \| null` | SHA-256 of the resolved encoding's `rules` array, for drift detection across engine changes. |
-| `failureCategory` | enum | `unmapped_character \| invalid_encoding \| reorder_defect \| normalization_warning \| conversion_exception \| document_extraction_failure \| unknown` (§17 taxonomy). |
+| `failureCategory` | enum | `unmapped_character \| invalid_encoding \| reorder_defect \| normalization_warning \| ambiguous_typography \| conversion_exception \| document_extraction_failure \| unknown` — `FAILURE_CATEGORIES` in `features/converter/engine/classify.ts`, which the schema reads (§17 taxonomy; `ambiguous_typography` added in hardening Phase 2, §5.1). |
 | `failedSequence` | `string` | The **exact** legacy sequence, byte-for-byte/char-for-char as received. Never trimmed, normalized, or replaced. |
 | `codePoints` | `number[]` | `Array.from(failedSequence).map(c => c.codePointAt(0))` — computed, never invented. |
 | `position` | `number \| null` | Character offset of the failure within the original input. |
@@ -114,7 +120,7 @@ Doc ID = deterministic `sha256("{encodingId}|{engineVersion}|{failedSequence}")`
 | `occurrenceCount` | `number` | `FieldValue.increment(n)`, where `n` is the batch's claimed count clamped to `CONVERSION_FAILURE_LIMITS.maxOccurrenceCount`. **The unit changed** — see §3.2.1. |
 | `firstSeenAt` / `lastSeenAt` | `string` (ISO) | |
 | `sampleOccurrenceIds` | `string[]` | Small capped list (e.g. 5) of recent `conversionFailures` doc IDs, for quick admin preview without a second query. |
-| `status` | `"open" \| "resolved"` | Set to `resolved` only by an explicit admin action once a mapping-rule fix has shipped (manual, out of scope for this system to automate). |
+| `status` | `"open" \| "resolved"` | Decided by the server re-running the engine on the stored sequence (`lib/conversionFailures/reverify.ts`), never by a caller: `resolved` when it now converts, back to `open` if it fails again. Runs on every new occurrence write (`recordConversionFailures`, creation included) and on the admin `POST /api/admin/conversion-failures/reverify` sweep. A scheduled sweep is proposed only (`docs/proposal-reverify-cron.md`). Never deletes the pattern or its occurrences. |
 
 ### 3.2.1 `occurrenceCount` changed unit at `620aacd` — do not compare across it
 
@@ -213,6 +219,9 @@ version. Adds:
 - NFC-normalization mismatch → `normalization_warning`
 - A Latin-typography byte that is also a real conjunct in the active table, in mixed
   Unicode/legacy input → `ambiguous_typography` (Phase 2, see below)
+- A thrown/`AppError` `CONVERSION_ERROR` → `conversion_exception`
+- `AppError` `FILE_PROCESSING_ERROR` → `document_extraction_failure`
+- Anything else → `unknown`
 
 ### 5.1 Source hygiene and the flag-don't-strip rule (Phase 2)
 
@@ -228,10 +237,10 @@ place. Two rules govern it:
 
    | byte | Bijoy meaning |
    |---|---|
-   | U+2019 `'` | `্থ` (also ন্থ, ন্থ্র, স্থ) |
+   | U+2019 `’` | `্থ` (also ন্থ, ন্থ্র, স্থ) |
    | U+00AD soft hyphen | `্ল` (also গ্ল, প্ল, ব্ল, ল্ল, শ্ল, স্প্ল) |
-   | U+201C `"` | `ু` (also রু) |
-   | U+201D `"` | চ্চ, চ্ছ, চ্ছ্ব, চ্ছ্র, চ্ঞ, চ্ব |
+   | U+201C `“` | `ু` (also রু) |
+   | U+201D `”` | চ্চ, চ্ছ, চ্ছ্ব, চ্ছ্র, চ্ঞ, চ্ব |
 
    A "smart quotes" or "strip soft hyphens" cleanup — the kind most text pipelines apply by
    reflex — would silently destroy every স্থ and every ল-fola in the document. Note also
@@ -262,9 +271,6 @@ source, so `failurePatterns` reflects real mapping gaps:
   defect. `hasDanglingPreBaseVowel` exempts only that trailing run.
 - **ZWJ/ZWNJ.** Not legacy bytes in any table, so they reported as unmapped — including
   the U+200C this converter emits itself for the visible hasant. Now passed through.
-- A thrown/`AppError` `CONVERSION_ERROR` → `conversion_exception`
-- `AppError` `FILE_PROCESSING_ERROR` → `document_extraction_failure`
-- Anything else → `unknown`
 
 ## 6. Client and server capture paths
 
@@ -572,7 +578,8 @@ throws under a simulated `window`, and no client-reachable directory references
 
 - `conversionFailures`/`failurePatterns`/`aiResolutions` are **admin-only read** in
   `firestore.rules` (stricter than `errorLogs`' owner-or-admin, because these collections
-  contain full document text). Write is always `false` — everything goes through the Admin
+  aggregate user context across users — and occurrences written before the §3.1 privacy
+  bound still hold whole documents in `fullText`). Write is always `false` — everything goes through the Admin
   SDK server-side.
 - `POST /api/conversion-failures` is rate-limited like `/api/error-logs` (`checkSharedRateLimit`,
   shared across Vercel instances through a Firestore window counter),
@@ -604,8 +611,9 @@ throws under a simulated `window`, and no client-reachable directory references
   occurrences, resolved count; filters by encoding/category/severity), modeled on the
   existing `AdminErrorLog` route→hook→component triad. Explicit empty state before any data
   exists.
-- `/admin/conversion-failures/[patternId]` — pattern detail: recent occurrences (full
-  text/context, collapsed by default), all AI resolutions per provider, "Resolve with
+- `/admin/conversion-failures/[patternId]` — pattern detail: recent occurrences (context
+  windows, collapsed by default; a legacy `fullText` is shown only on a pre-bound row that
+  still holds one, §3.1), all AI resolutions per provider, "Resolve with
   Gemini/OpenAI" actions, and accept/reject controls, calling
   `POST .../[patternId]/resolve` (§7.2) and `POST .../[patternId]/review` (§7.4) through
   `hooks/useConversionFailureDetail.ts`.
@@ -630,8 +638,8 @@ a later change to any of those pieces — including the §9 admin UI.
   written into; an accept/reject leaving the seeded `conversionFailures`/`failurePatterns`
   documents byte-for-byte unchanged; a review opening no collection but `aiResolutions`; and
   no shipped `lib/ai/*` module naming either evidence collection as a write target.
-- It does not automatically send full document text to Gemini/OpenAI, even though full text
-  is stored in Firestore — storage and third-party transmission are treated as separate
+- It does not automatically send full document text to Gemini/OpenAI, even where a
+  pre-bound occurrence still holds one in Firestore (new occurrences store none, §3.1) — storage and third-party transmission are treated as separate
   exposure surfaces. *Enforced by:* asserting at the HTTP boundary — the actual `fetch` body
   each adapter puts on the wire — that a request carrying `fullText`/context sentinels
   transmits none of them under default options, and all of them only on an explicit
