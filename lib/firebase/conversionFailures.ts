@@ -53,8 +53,16 @@ export type WithId<T> = T & { id: string };
  */
 export type ConversionFailureInput = Omit<
   ConversionFailure,
-  "createdAt" | "patternId" | "codePoints" | "fullText" | "fullTextTruncated" | "occurrenceCount"
+  | "createdAt"
+  | "patternId"
+  | "codePoints"
+  | "fullText"
+  | "fullTextTruncated"
+  | "occurrenceCount"
+  | "anonymousLabel"
 > & {
+  /** Set only by `/api/conversion-failures` for a labelled signed-out visitor. Omitted means none. */
+  anonymousLabel?: string | null;
   /**
    * How many occurrences this entry stands for. Omitted means one, which is
    * what every caller written before batching meant.
@@ -109,6 +117,7 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
 
   const occurrence: ConversionFailure = {
     ...input,
+    anonymousLabel: input.anonymousLabel ?? null,
     occurrenceCount,
     fullText: "",
     fullTextTruncated: false,

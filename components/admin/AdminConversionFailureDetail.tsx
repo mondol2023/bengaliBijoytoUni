@@ -74,7 +74,12 @@ function OccurrenceRow({ occurrence }: { occurrence: WithId<ConversionFailure> }
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground/50">
         <span className="font-mono">{occurrence.errorCode}</span>
-        <span>{occurrence.userId ? `uid: ${occurrence.userId}` : "anonymous"}</span>
+        <span>
+          {occurrence.userId
+            ? `uid: ${occurrence.userId}`
+            : // Rows from before visitor labels, and server-captured ones, have none.
+              (occurrence.anonymousLabel ?? "anonymous")}
+        </span>
         {occurrence.position !== null && <span>offset {occurrence.position}</span>}
         {occurrence.rulesHash && <span className="font-mono">rules {occurrence.rulesHash}</span>}
         {occurrence.route && <span className="font-mono">{occurrence.route}</span>}

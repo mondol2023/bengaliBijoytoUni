@@ -7,9 +7,11 @@ import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";
 import { FAILURE_CATEGORIES } from "@/features/converter/engine/classify";
 import { checkSharedRateLimit, rateLimitIdentity } from "@/lib/security/sharedRateLimit";
 import { readJsonBody } from "@/lib/security/readJsonBody";
-import { failResponder, toAppError } from "@/lib/errors/handlers";
+import { failResponder, logAppError, toAppError } from "@/lib/errors/handlers";
 import { AppErrors } from "@/lib/errors/types";
 import { fileExtensionOnly } from "@/lib/privacy/fileName";
+import { resolveAnonymousLabel } from "@/lib/firebase/anonymousVisitors";
+import { isAnonymousVisitorId } from "@/lib/conversionFailures/anonymousVisitor";
 
 export const runtime = "nodejs";
 
@@ -69,7 +71,31 @@ const occurrenceSchema = z.object({
 
 const bodySchema = z.object({
   failures: z.array(occurrenceSchema).min(1).max(CONVERSION_FAILURE_LIMITS.maxFailuresPerReport),
+  /**
+   * A signed-out browser's random id (`lib/conversionFailures/anonymousVisitor.ts`).
+   * Deliberately `unknown` here and checked separately: a missing or
+   * malformed id costs the report its label, never the report itself.
+   */
+  anonymousVisitorId: z.unknown().optional(),
 });
+
+/**
+ * `anonymousN` for a signed-out caller with a valid visitor id, else null.
+ * Best-effort like the rest of this route's bookkeeping: a failure to assign
+ * a label is logged and the report is recorded unlabelled.
+ */
+async function anonymousLabelFor(signedIn: boolean, visitorId: unknown): Promise<string | null> {
+  if (signedIn || !isAnonymousVisitorId(visitorId)) return null;
+  try {
+    return await resolveAnonymousLabel(visitorId);
+  } catch (cause) {
+    logAppError(
+      { code: "DATABASE_ERROR", message: "Failed to assign an anonymous visitor label.", debug: cause },
+      { route: "api/conversion-failures" },
+    );
+    return null;
+  }
+}
 
 /**
  * Records the distinct-pattern occurrences from one client-side conversion
@@ -118,10 +144,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Only consulted without a verified user: a signed-in caller is recorded
+  // by uid, and a report is never linked across the two.
+  const anonymousLabel = await anonymousLabelFor(user !== null, parsed.data.anonymousVisitorId);
+
   try {
     const ids = await recordConversionFailures(
       parsed.data.failures.map((item) => ({
         userId: user?.uid ?? null,
+        anonymousLabel,
         sessionId: item.sessionId,
         source: item.source,
         encodingId: item.encodingId,

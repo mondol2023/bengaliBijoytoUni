@@ -85,6 +85,7 @@ context across users.
 | Field | Type | Notes |
 |---|---|---|
 | `userId` | `string \| null` | Re-derived server-side from the verified token, like every other collection. Anonymous allowed. |
+| `anonymousLabel` | `string \| null` | `"anonymousN"` for a signed-out text-converter report that carried a valid browser visitor id (§6.1); `null` when signed in, when no id was sent, for document uploads, and on rows written before the field existed. Best-effort: a labelling failure stores `null` rather than losing the report. |
 | `sessionId` | `string` | Client-generated `crypto.randomUUID()` (text path) or request-scoped id (document path). Groups multiple failures from one conversion attempt without a separate sessions collection. |
 | `source` | `"text" \| "file" \| "comparison" \| "api"` | Matches `errorLogSchema.source`. |
 | `encodingId` | `string \| null` | `EncodingDefinition.id`, or `null` if auto-detect failed before an encoding was chosen. |
@@ -281,7 +282,8 @@ both rather than adding a third path:
    a `ValidationResult` per keystroke (debounced). A new reporter (alongside
    `hooks/useIssueLog.ts`) posts detailed occurrences to `POST /api/conversion-failures`
    once per distinct pattern per session — fire-and-forget, `keepalive: true`, never blocks
-   the UI, exactly like `lib/log/reportIssue.ts` already does for `errorLogs`.
+   the UI, exactly like `lib/log/reportIssue.ts` already does for `errorLogs`. (Since
+   superseded by a `localStorage` outbox sent every 2 minutes — see §6.1.)
 2. **Document upload (server-side).** `app/api/documents/extract/route.ts` already has the
    extracted text and `validation.unmappedDetails` in memory after `convertDocument()`. It
    calls the repo function directly — no HTTP round trip — right next to its existing
@@ -304,6 +306,53 @@ delete control.
 
 In both cases, persistence is **best-effort and asynchronous relative to the conversion
 result**: a Firestore outage never blocks or corrupts the conversion the user is looking at.
+
+### 6.1 The browser outbox and anonymous visitor labels
+
+The text-converter reporter (`hooks/useConversionFailureReporter.ts`) no longer posts each
+flush directly. Every 5 s (`FLUSH_DELAY_MS`) its in-memory buffer is moved into a
+`localStorage` outbox (`lib/conversionFailures/outbox.ts`, key
+`convert2uni.failureOutbox`), and the outbox is sent to `POST /api/conversion-failures`
+every **2 minutes** (`OUTBOX_DRAIN_INTERVAL_MS`). It is also sent immediately when the page
+is hidden or closed, on unmount, and on the next visit for anything an earlier one left
+behind (offline, a failed request, a crash).
+
+- **At-most-once.** A batch is taken out of storage before it is sent and put back only on an
+  observed failure (`408`, `429`, `5xx`, network error). Other `4xx` drop it. A Web Lock
+  (`navigator.locks`, `ifAvailable`) keeps two tabs from sending the same batch.
+- **Bounded.** At most 20 batches (`DEFAULT_OUTBOX_MAX_BATCHES`), each dropped after 7 days
+  unsent (`DEFAULT_OUTBOX_MAX_AGE_MS`). Where `localStorage` is unavailable the outbox lives in
+  memory.
+- **Keepalive** is used only for bodies under 60,000 bytes (`KEEPALIVE_BODY_LIMIT` in
+  `outboxSend.ts`): browsers throw on a larger keepalive body, which would retry forever.
+- **Attribution is fixed when a batch is queued** (`outboxSend.ts`): `anonymous` batches are
+  sent with their visitor id and no token, even if the visitor has since signed in; `user`
+  batches carry a token only if that same user is still signed in, otherwise they go
+  unattributed; batches queued before the sign-in check settled resolve at send time.
+
+**Anonymous visitors.** A signed-out browser gets a random UUID v4 in `localStorage`
+(`convert2uni.anonymousVisitorId`, `lib/conversionFailures/anonymousVisitor.ts`), sent as
+`anonymousVisitorId`. The route ignores it for signed-in callers and for anything that is not
+a UUID v4. `lib/firebase/anonymousVisitors.ts` turns it into a sequential label:
+
+| Collection | Document | Contents |
+|---|---|---|
+| `anonymousVisitors` | `sha256("anonymous-visitor\|" + visitorId)` | `{ number, label, createdAt }` |
+| `anonymousVisitorCounter` | `sequence` | `{ lastNumber }` |
+
+The raw id is never stored. A returning visitor costs one read; a new one is numbered in a
+transaction over both documents, so concurrent instances cannot hand out a duplicate. Both
+collections are admin-read, server-write in `firestore.rules`.
+
+Neither collection has a TTL, and neither is in `RETENTION_EXEMPT_COLLECTIONS` (which is
+about collections that hold report data). Expiring a visitor would only give a returning
+browser a fresh number, and expiring the counter would reuse numbers; the documents hold a
+hash and an integer. Not linked: a visitor who later signs in keeps their old anonymous
+reports under the label, and their new ones under their uid. Document uploads
+(`/api/documents/extract`) are not labelled.
+
+The id and the 2-minute / 7-day wait are disclosed in `lib/privacy/disclosure.ts`, pinned to
+these constants by `lib/privacy/__tests__/disclosure.test.ts`.
 
 ## 7. AI resolution — explicit, provider-abstracted, never automatic
 

@@ -138,6 +138,7 @@ const AI_CANDIDATE = "আ";
 function makeOccurrence(): ConversionFailure {
   return {
     userId: null,
+    anonymousLabel: null,
     sessionId: "session-1",
     source: "text",
     encodingId: "bijoy",

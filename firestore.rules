@@ -125,6 +125,21 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // anonymousVisitors/{sha256(visitorId)}, anonymousVisitorCounter/sequence —
+    // the `anonymousN` labels on signed-out conversion-failure reports
+    // (lib/firebase/anonymousVisitors.ts). A hash and an integer, no user
+    // content; admin-only read like the reports they label, server-only write
+    // because a client write could renumber or impersonate a visitor.
+    match /anonymousVisitors/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /anonymousVisitorCounter/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // adminStats/totals, adminStatsDaily/{date} — denormalized counters for
     // the admin overview. Admin-only read; server-only write (bumped by
     // `lib/firebase/adminStats.ts` alongside every activity record).

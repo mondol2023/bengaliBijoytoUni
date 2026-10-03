@@ -120,6 +120,7 @@ function makeOccurrence(overrides: Partial<WithId<ConversionFailure>> = {}): Wit
   return {
     id: "occ-1",
     userId: "user-1",
+    anonymousLabel: null,
     sessionId: "session-1",
     source: "text",
     encodingId: "bijoy",

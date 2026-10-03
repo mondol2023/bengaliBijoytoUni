@@ -18,6 +18,10 @@ vi.mock("@/lib/auth/session", () => ({
   getServerUser: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock("@/lib/firebase/anonymousVisitors", () => ({
+  resolveAnonymousLabel: vi.fn().mockResolvedValue("anonymous7"),
+}));
+
 vi.mock("@/lib/security/sharedRateLimit", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/security/sharedRateLimit")>();
   return { ...actual, checkSharedRateLimit: vi.fn(async () => ({ ok: true })) };
@@ -225,5 +229,80 @@ describe("POST /api/conversion-failures body ceiling", () => {
 
     expect(response.status).toBe(200);
     expect(recordConversionFailures).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Signed-out visitors are told apart by a browser-held random id, which the
+ * server turns into a sequential `anonymousN` label. The id is a label, not
+ * an identity: it is only consulted when there is no verified user, and a
+ * malformed one is ignored rather than rejected so the report still lands.
+ */
+describe("POST /api/conversion-failures: anonymous visitor labels", () => {
+  const VISITOR_ID = "1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b";
+
+  beforeEach(async () => {
+    vi.mocked(recordConversionFailures).mockClear();
+    const { resolveAnonymousLabel } = await import("@/lib/firebase/anonymousVisitors");
+    vi.mocked(resolveAnonymousLabel).mockClear();
+    vi.mocked(resolveAnonymousLabel).mockResolvedValue("anonymous7");
+    const { getServerUser } = await import("@/lib/auth/session");
+    vi.mocked(getServerUser).mockResolvedValue(null);
+  });
+
+  it("stores the visitor's label on every occurrence of a signed-out report", async () => {
+    const response = await POST(
+      makeRequest({ anonymousVisitorId: VISITOR_ID, failures: [occurrence, { ...occurrence, failedSequence: "Bv" }] }),
+    );
+
+    expect(response.status).toBe(200);
+    const { resolveAnonymousLabel } = await import("@/lib/firebase/anonymousVisitors");
+    expect(resolveAnonymousLabel).toHaveBeenCalledWith(VISITOR_ID);
+    const recorded = vi.mocked(recordConversionFailures).mock.calls[0][0];
+    expect(recorded.map((r) => r.anonymousLabel)).toEqual(["anonymous7", "anonymous7"]);
+    expect(recorded[0].userId).toBeNull();
+    expect(JSON.stringify(recorded)).not.toContain(VISITOR_ID);
+  });
+
+  it("ignores the visitor id when the caller is signed in", async () => {
+    const { getServerUser } = await import("@/lib/auth/session");
+    vi.mocked(getServerUser).mockResolvedValue({ uid: "user-1" } as never);
+
+    await POST(makeRequest({ anonymousVisitorId: VISITOR_ID, failures: [occurrence] }));
+
+    const { resolveAnonymousLabel } = await import("@/lib/firebase/anonymousVisitors");
+    expect(resolveAnonymousLabel).not.toHaveBeenCalled();
+    const [recorded] = vi.mocked(recordConversionFailures).mock.calls[0][0];
+    expect(recorded.userId).toBe("user-1");
+    expect(recorded.anonymousLabel).toBeNull();
+  });
+
+  it("records without a label when the id is missing or malformed", async () => {
+    const { resolveAnonymousLabel } = await import("@/lib/firebase/anonymousVisitors");
+    for (const anonymousVisitorId of [undefined, "anonymous1", 42, "x".repeat(5000)]) {
+      vi.mocked(recordConversionFailures).mockClear();
+      const response = await POST(makeRequest({ anonymousVisitorId, failures: [occurrence] }));
+      expect(response.status, String(anonymousVisitorId).slice(0, 20)).toBe(200);
+      const [recorded] = vi.mocked(recordConversionFailures).mock.calls[0][0];
+      expect(recorded.anonymousLabel).toBeNull();
+    }
+    expect(resolveAnonymousLabel).not.toHaveBeenCalled();
+  });
+
+  it("still records the report when assigning a label fails", async () => {
+    const { resolveAnonymousLabel } = await import("@/lib/firebase/anonymousVisitors");
+    vi.mocked(resolveAnonymousLabel).mockRejectedValueOnce(new Error("firestore down"));
+
+    const response = await POST(makeRequest({ anonymousVisitorId: VISITOR_ID, failures: [occurrence] }));
+
+    expect(response.status).toBe(200);
+    const [recorded] = vi.mocked(recordConversionFailures).mock.calls[0][0];
+    expect(recorded.anonymousLabel).toBeNull();
+  });
+
+  it("never reads a label from the request body", async () => {
+    await POST(makeRequest({ failures: [{ ...occurrence, anonymousLabel: "anonymous1" }] }));
+    const [recorded] = vi.mocked(recordConversionFailures).mock.calls[0][0];
+    expect(recorded.anonymousLabel).toBeNull();
   });
 });

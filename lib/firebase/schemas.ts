@@ -216,6 +216,12 @@ const failureCategorySchema = z.enum(FAILURE_CATEGORIES);
  */
 export const conversionFailureSchema = z.object({
   userId: z.string().nullable(),
+  /**
+   * `anonymousN` for a signed-out visitor whose browser sent a valid visitor
+   * id (`lib/firebase/anonymousVisitors.ts`); null for a signed-in user, a
+   * server-captured failure, and every row written before labels existed.
+   */
+  anonymousLabel: z.string().nullable().default(null),
   /** Groups every failure from one conversion attempt without a separate sessions collection. */
   sessionId: z.string().min(1),
   source: z.enum(["text", "file", "comparison", "api"]),
@@ -261,6 +267,18 @@ export const conversionFailureSchema = z.object({
   createdAt: z.string(),
 });
 export type ConversionFailure = z.infer<typeof conversionFailureSchema>;
+
+/**
+ * `anonymousVisitors/{sha256(visitorId)}` — the sequential label one
+ * signed-out browser was given. Holds no user content and not the visitor id
+ * itself, only its hash. See `lib/firebase/anonymousVisitors.ts`.
+ */
+export const anonymousVisitorSchema = z.object({
+  number: z.number().int().positive(),
+  label: z.string().min(1),
+  createdAt: z.string(),
+});
+export type AnonymousVisitor = z.infer<typeof anonymousVisitorSchema>;
 
 /**
  * The dedup / cost-control key: one document per distinct
