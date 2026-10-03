@@ -105,6 +105,8 @@ so no count, timestamp or occurrence id leaks alongside. None of that stops
 the ranking being chosen.
 
 **Proposed mitigations, in the order I would do them. None implemented here.**
+*(Since then: 1 ✅ reached through stored status — `4c0f69a`, `f28fc32`, see "Phase 6: closed"
+below. 2, 3 and 4 are not built.)*
 
 1. **Re-verify before publishing.** Run the current engine over the stored
    `failedSequence` when building the snapshot and publish only sequences the
@@ -144,7 +146,7 @@ without filtering on it, and a poisoned pattern is `open` anyway, which is
 the half of finding 2 that re-verification never addressed. Filtering the
 published snapshot by stored status is the cheap next step and needs no
 engine run — it is a change to what the endpoint serves, so it is proposed,
-not taken.
+not taken. *(✅ Taken in `4c0f69a`, next paragraph.)*
 
 **Phase 6: closed.** Two commits, and what each one is evidence for:
 

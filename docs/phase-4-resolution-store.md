@@ -1,5 +1,11 @@
 # Phase 4 design: storing and serving accepted resolutions
 
+**Status: ✅ implemented.** `f18f4b8` lookup key, `fe907a7` derived statuses + batched hit counts,
+`17aae4a` validator, `064c6db` serving in the snapshot, `c9feb35` accepted resolutions never
+expire, `12134c6` AI safety (fenced text, bounded retries, in-flight de-dup, daily cap). The
+one item left out on purpose — promotion into the rule tables — is still a proposal
+(`docs/proposal-promoting-resolutions-to-rules.md`). The text below is the design as written.
+
 One page, written before any code. The principle it has to keep: **no live AI
 call in the user conversion path**, AI output is never authoritative, and only
 a human promotes a resolution.

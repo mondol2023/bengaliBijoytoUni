@@ -1,7 +1,10 @@
 # Phase 5 design: `runConversion()`, and what happens when the engine cannot
 
-**Status: design only. Nothing in this document is implemented**, as §4 of
-the brief asked. Where it says "would", that is literal.
+**Status: ✅ implemented** — see §7 for the commits. Question 2 is decided, question 1 decided
+in Phase 6, question 3 still held. Wired into the UI behind
+`NEXT_PUBLIC_ENABLE_FALLBACK_PIPELINE`, off by default (`debb7f5`). The sections below are the
+design as first written ("design only, nothing implemented"), kept unchanged as the record;
+read its "would" and "proposed, does not exist" as of that commit (`3c3d09a`).
 
 ## 0. What exists today, so the gap is visible
 
@@ -342,4 +345,5 @@ converts can still be published until the next sweep — and a poisoned
 pattern is published regardless, because its status is honestly `open`.
 Filtering the published snapshot by stored status is cheap and needs no
 engine run; it is a change to what the endpoint serves, so it is proposed
-here rather than taken.
+here rather than taken. **✅ Taken in Phase 6:** `4c0f69a` publishes only `open` patterns, and
+`f28fc32` makes the status honest from creation (threat model §2, "Phase 6: closed").
