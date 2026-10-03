@@ -128,11 +128,16 @@ describe("the schema cannot carry an expireAt", () => {
 });
 
 describe("nothing writes expireAt into aiResolutions", () => {
-  it("names the field in exactly two shipped modules, neither of which is a writer for this collection", () => {
+  it("names the field only in known modules, none of which is a writer for this collection", () => {
     // `retention.ts` defines it; `disclosure.ts` explains it to a reader.
-    // Every actual write goes through `retentionFields()`, which is the next
-    // test's subject — so a third file appearing here is a new place the
-    // field is being handled by hand, and worth a look.
+    // Every retention write goes through `retentionFields()`, which is the
+    // next test's subject. The shared counters stamp their own `expireAt` on
+    // their own documents (`costCap.ts` computes it, `counterStore.ts`
+    // declares it, `sharedCounter.ts` writes it) — and `sharedCounter.ts`
+    // refuses any collection outside `SHARED_COUNTER_COLLECTIONS`, which its
+    // own test pins as excluding `aiResolutions`. Any other file appearing
+    // here is a new place the field is being handled by hand, and worth a
+    // look.
     const mentions: string[] = [];
     for (const dir of ["lib", "app", "features", "hooks", "components"]) {
       for (const file of listSources(path.join(REPO_ROOT, dir))) {
@@ -140,8 +145,11 @@ describe("nothing writes expireAt into aiResolutions", () => {
       }
     }
     expect(mentions.sort()).toStrictEqual([
+      "lib/ai/costCap.ts",
       "lib/conversionFailures/retention.ts",
+      "lib/firebase/sharedCounter.ts",
       "lib/privacy/disclosure.ts",
+      "lib/security/counterStore.ts",
     ]);
   });
 

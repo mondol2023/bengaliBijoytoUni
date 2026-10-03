@@ -35,13 +35,21 @@ import {
   summarizeRejections,
   validateCandidateResolution,
 } from "../conversionFailures/resolutionValidator";
-import { dailyCallBudget } from "./costCap";
+import { createDailyCallBudget } from "./costCap";
+import { firestoreCounterStore } from "@/lib/firebase/sharedCounter";
 import { createInFlightMap } from "./inFlight";
 import { withProviderRetry } from "./retry";
 import type { ConversionResolutionRequest, ProviderId, ResolutionOptions } from "./types";
 import type { ProviderError } from "./errors";
 import { AppErrors, type AppError, type Result } from "../errors/types";
 import { logAppError } from "../errors/handlers";
+
+/**
+ * The deployment-wide daily call budget. Its count is a Firestore document
+ * per UTC day rather than module memory, because on Vercel every instance
+ * would otherwise hold its own budget (`lib/ai/costCap.ts`).
+ */
+const dailyCallBudget = createDailyCallBudget({ store: firestoreCounterStore });
 
 const AI_RESOLUTIONS_COLLECTION = "aiResolutions";
 
@@ -115,6 +123,7 @@ function mapProviderErrorToAppError(error: ProviderError): AppError {
     // what a rate-limit status means and what the UI already handles.
     case "provider_budget_exhausted":
       return AppErrors.rateLimit(error.message, { details: { retryAfterSeconds: 3_600 } });
+    case "provider_budget_unavailable":
     case "provider_not_configured":
     case "provider_authentication_failed":
     case "provider_timeout":
@@ -353,7 +362,7 @@ async function runResolution(
   // those paths return above this line. From here the call always happens,
   // which is why nothing releases the reservation: a provider call that
   // failed still consumed a request.
-  const reservation = dailyCallBudget.reserve();
+  const reservation = await dailyCallBudget.reserve();
   if (!reservation.ok) {
     return { ok: false, error: mapProviderErrorToAppError(reservation.error) };
   }

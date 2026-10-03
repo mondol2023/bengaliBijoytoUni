@@ -12,23 +12,24 @@
  * it never affects the decision.
  *
  * **It fails closed.** A budget of zero, a negative budget, an unparseable
- * environment value and an exhausted day all refuse the call. The one thing
- * it will not do is let a misconfiguration read as "unlimited".
+ * environment value, an exhausted day, and a counter that cannot be reached
+ * all refuse the call. The one thing it will not do is let a
+ * misconfiguration or an outage read as "unlimited".
  *
- * **It is per-instance**, exactly like `lib/security/rateLimit.ts`, and for
- * the same reason: the map lives in module memory and dies on a cold start.
- * On a multi-instance host the effective ceiling is the budget times the
- * instance count. That is stated rather than hidden
- * (`docs/threat-model-public-failure-endpoints.md` §3 makes the same point
- * about the rate limiter). It is a weaker bound than it looks, and it is
- * still worth having here because the route behind it is admin-only and
- * already rate-limited to `RESOLUTION_LIMITS.resolveRateLimit` — this is the
- * backstop for a script or a loop, not for an anonymous crowd. A cap that
- * holds across instances needs shared state and belongs with the same
- * decision as a shared rate limiter.
+ * **It is deployment-wide.** The deployment is Vercel — serverless,
+ * potentially many concurrent instances — so a count held in module memory
+ * would bound one instance and reset on every cold start, making the real
+ * ceiling the budget times the instance count. The count therefore lives in
+ * a `CounterStore` (`lib/security/counterStore.ts`): one Firestore document
+ * per UTC day, reserved transactionally, supplied by
+ * `resolveConversionFailure.ts` — the one `lib/ai` module allowed to reach
+ * Firestore. This module stays database-free, so its rules are tested
+ * against the in-memory store, including two budgets sharing one store the
+ * way two instances share Firestore.
  */
 import { ProviderErrors, type ProviderError } from "./errors";
 import { RESOLUTION_LIMITS } from "./limits";
+import { createMemoryCounterStore, type CounterSlot, type CounterStore } from "@/lib/security/counterStore";
 
 export const AI_DAILY_CALL_BUDGET_ENV = "AI_DAILY_CALL_BUDGET";
 
@@ -63,6 +64,12 @@ export function configuredDailyCallBudget(
   return parsed;
 }
 
+/** Firestore collection holding one counter document per UTC day, id `YYYY-MM-DD`. */
+export const AI_CALL_BUDGET_COLLECTION = "aiCallBudget";
+
+/** How long a spent day's counter is kept before a TTL policy may delete it. Long enough to audit a bill against. */
+const BUDGET_DOC_RETENTION_DAYS = 35;
+
 export interface DailyCallBudgetOptions {
   /** Defaults to `configuredDailyCallBudget()`, read at reserve time. */
   readonly maxCallsPerDay?: () => number;
@@ -70,6 +77,12 @@ export interface DailyCallBudgetOptions {
   readonly now?: () => Date;
   /** Optional, operator-supplied, reporting only — never part of the decision. */
   readonly estimatedCostPerCall?: number;
+  /**
+   * Where the count lives. Defaults to a process-local store, which is right
+   * for a test and wrong for Vercel; the resolution path passes the
+   * Firestore store.
+   */
+  readonly store?: CounterStore;
 }
 
 export interface BudgetUsage {
@@ -81,33 +94,38 @@ export interface BudgetUsage {
   readonly estimatedCost: number | null;
 }
 
+export type BudgetReservation = { ok: true; usage: BudgetUsage } | { ok: false; error: ProviderError };
+
 export interface DailyCallBudget {
   /**
    * Takes one call's worth of budget, or refuses. Incrementing before the
-   * call rather than after is what makes two concurrent callers unable to
-   * both take the last unit.
+   * call rather than after — atomically, in the store — is what makes two
+   * concurrent callers, on the same instance or on two, unable to both take
+   * the last unit.
    */
-  reserve(): { ok: true; usage: BudgetUsage } | { ok: false; error: ProviderError };
+  reserve(): Promise<BudgetReservation>;
   /** Gives a reservation back when the call turned out not to happen. */
-  release(): void;
-  usage(): BudgetUsage;
+  release(): Promise<void>;
+  usage(): Promise<BudgetUsage>;
 }
 
 export function createDailyCallBudget(options: DailyCallBudgetOptions = {}): DailyCallBudget {
   const now = options.now ?? (() => new Date());
   const limitOf = options.maxCallsPerDay ?? (() => configuredDailyCallBudget());
-  let day = utcDayKey(now());
-  let used = 0;
+  const store = options.store ?? createMemoryCounterStore();
 
-  function rollOver(): void {
-    const today = utcDayKey(now());
-    if (today !== day) {
-      day = today;
-      used = 0;
-    }
+  // The day is re-derived on every call rather than tracked, so the reset at
+  // midnight UTC is a new document id, not a branch that could be missed.
+  function slotFor(at: Date, limit: number): CounterSlot {
+    return {
+      collection: AI_CALL_BUDGET_COLLECTION,
+      docId: utcDayKey(at),
+      limit,
+      expireAt: new Date(at.getTime() + BUDGET_DOC_RETENTION_DAYS * 24 * 60 * 60 * 1000),
+    };
   }
 
-  function snapshot(limit: number): BudgetUsage {
+  function snapshot(day: string, used: number, limit: number): BudgetUsage {
     return {
       day,
       used,
@@ -119,28 +137,32 @@ export function createDailyCallBudget(options: DailyCallBudgetOptions = {}): Dai
   }
 
   return {
-    reserve() {
-      rollOver();
+    async reserve() {
+      const at = now();
+      const day = utcDayKey(at);
       const limit = limitOf();
-      if (used >= limit) {
-        return {
-          ok: false,
-          error: ProviderErrors.budgetExhausted(limit, day),
-        };
+      // Checked before the store, so a budget of zero refuses even when the
+      // store is unreachable, and costs no round trip.
+      if (limit <= 0) return { ok: false, error: ProviderErrors.budgetExhausted(limit, day) };
+
+      let outcome;
+      try {
+        outcome = await store.reserve(slotFor(at, limit));
+      } catch (cause) {
+        return { ok: false, error: ProviderErrors.budgetUnavailable(cause) };
       }
-      used += 1;
-      return { ok: true, usage: snapshot(limit) };
+      if (!outcome.admitted) return { ok: false, error: ProviderErrors.budgetExhausted(limit, day) };
+      return { ok: true, usage: snapshot(day, outcome.count, limit) };
     },
-    release() {
-      rollOver();
-      if (used > 0) used -= 1;
+    async release() {
+      const at = now();
+      await store.release(slotFor(at, limitOf()));
     },
-    usage() {
-      rollOver();
-      return snapshot(limitOf());
+    async usage() {
+      const at = now();
+      const limit = limitOf();
+      const slot = slotFor(at, limit);
+      return snapshot(slot.docId, await store.read(slot), limit);
     },
   };
 }
-
-/** The process-wide budget the resolution path uses. */
-export const dailyCallBudget = createDailyCallBudget();

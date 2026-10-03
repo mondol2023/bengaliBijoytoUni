@@ -21,6 +21,7 @@ export type ProviderErrorCode =
   | "provider_invalid_response"
   | "provider_content_rejected"
   | "provider_budget_exhausted"
+  | "provider_budget_unavailable"
   | "provider_unknown_error";
 
 export interface ProviderError {
@@ -117,6 +118,20 @@ export const ProviderErrors = {
       code: "provider_budget_exhausted",
       provider: null,
       message: `This deployment's daily limit of ${limit} AI calls is used up for ${day} (UTC).`,
+    };
+  },
+  /**
+   * The shared budget counter could not be read or written, so whether a
+   * unit is left is unknown. Refused rather than allowed: the budget fails
+   * closed, and "could not check" must never read as "unlimited". Distinct
+   * from `budgetExhausted` so an outage is not reported as a spent day.
+   */
+  budgetUnavailable(debug?: unknown): ProviderError {
+    return {
+      code: "provider_budget_unavailable",
+      provider: null,
+      message: "The AI call budget could not be checked, so no call was made. Try again shortly.",
+      debug,
     };
   },
   unknown(provider: ProviderId, debug?: unknown): ProviderError {

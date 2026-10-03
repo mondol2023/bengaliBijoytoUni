@@ -137,5 +137,13 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false;
     }
+
+    // aiCallBudget/{yyyy-mm-dd} — the deployment-wide daily AI call budget
+    // (lib/ai/costCap.ts, lib/firebase/sharedCounter.ts). Shared state so the
+    // cap holds across Vercel instances. Server-only both ways: nothing a
+    // client could learn from it, and a client write would reset the cap.
+    match /aiCallBudget/{day} {
+      allow read, write: if false;
+    }
   }
 }
