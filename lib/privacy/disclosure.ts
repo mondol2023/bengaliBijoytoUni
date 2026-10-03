@@ -46,6 +46,14 @@ export const RETENTION = {
   patternDays: 365,
 } as const;
 
+/** How long a failure report may wait in the browser before it is sent. */
+export const REPORT_QUEUE = {
+  /** `OUTBOX_DRAIN_INTERVAL_MS` in `lib/conversionFailures/outbox.ts`. */
+  sendEveryMinutes: 2,
+  /** `DEFAULT_OUTBOX_MAX_AGE_MS`: an unsent report older than this is dropped. */
+  maxDays: 7,
+} as const;
+
 /** The route the inline lines link to, and the footer entry. */
 export const PRIVACY_HREF = "/privacy";
 
@@ -132,10 +140,12 @@ export const PRIVACY_PAGE_SECTIONS: DisclosureSection[] = [
       {
         en:
           "Text you paste or type into the converter is converted in your browser. It is not sent " +
-          "to us, and it is not stored anywhere.",
+          "to us, and it is not stored — apart from the short excerpt a failure report carries, " +
+          "described below.",
         bn:
           "আপনি কনভার্টারে যে লেখা পেস্ট করেন বা টাইপ করেন, তা আপনার ব্রাউজারেই রূপান্তরিত হয়। " +
-          "সেটি আমাদের কাছে পাঠানো হয় না এবং কোথাও সংরক্ষণ করা হয় না।",
+          "সেটি আমাদের কাছে পাঠানো হয় না এবং সংরক্ষণও করা হয় না — কেবল নিচে বর্ণিত ব্যর্থতার " +
+          "রিপোর্টে থাকা ছোট অংশটুকু ছাড়া।",
       },
       {
         en:
@@ -148,7 +158,9 @@ export const PRIVACY_PAGE_SECTIONS: DisclosureSection[] = [
     ],
   },
   {
-    // `lib/conversionFailures/occurrence.ts`, `app/api/conversion-failures/route.ts`.
+    // `lib/conversionFailures/occurrence.ts`, `app/api/conversion-failures/route.ts`;
+    // the anonymous id and the queue: `lib/conversionFailures/anonymousVisitor.ts`,
+    // `lib/conversionFailures/outbox.ts`, `lib/firebase/anonymousVisitors.ts`.
     heading: { en: "When a sequence cannot be converted", bn: "যখন কোনো অংশ রূপান্তর করা যায় না" },
     body: [
       {
@@ -176,10 +188,24 @@ export const PRIVACY_PAGE_SECTIONS: DisclosureSection[] = [
       {
         en:
           "If you are signed in, your account id is attached to the report. If you are not, the " +
-          "report is anonymous.",
+          "report carries a random id kept in this browser, so reports from the same browser can " +
+          "be grouped as one anonymous visitor (shown to us as “anonymous7”). It is not linked to " +
+          "an account, and clearing this site's data resets it.",
         bn:
           "আপনি সাইন ইন করা থাকলে রিপোর্টের সঙ্গে আপনার অ্যাকাউন্ট আইডি যুক্ত থাকে। সাইন ইন করা " +
-          "না থাকলে রিপোর্টটি নামহীন।",
+          "না থাকলে রিপোর্টে এই ব্রাউজারে রাখা একটি এলোমেলো আইডি থাকে, যাতে একই ব্রাউজারের " +
+          "রিপোর্টগুলো একজন নামহীন ভিজিটর হিসেবে একসঙ্গে দেখা যায় (আমাদের কাছে যেমন " +
+          "“anonymous7”)। এটি কোনো অ্যাকাউন্টের সঙ্গে যুক্ত নয়, আর এই সাইটের ডেটা মুছে দিলে এটি " +
+          "নতুন হয়ে যায়।",
+      },
+      {
+        en:
+          `Reports wait in this browser for up to ${REPORT_QUEUE.sendEveryMinutes} minutes before ` +
+          `they are sent — longer if you are offline, but never more than ${REPORT_QUEUE.maxDays} ` +
+          "days.",
+        bn:
+          `রিপোর্টগুলো পাঠানোর আগে সর্বোচ্চ ${REPORT_QUEUE.sendEveryMinutes} মিনিট এই ব্রাউজারে ` +
+          `অপেক্ষা করে — অফলাইনে থাকলে আরও বেশি, তবে কখনো ${REPORT_QUEUE.maxDays} দিনের বেশি নয়।`,
       },
     ],
   },

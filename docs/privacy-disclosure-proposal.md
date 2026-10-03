@@ -55,6 +55,24 @@ Two claims the copy makes that only became true during this phase:
   honest phrasing while no button existed. A test asserts the strong wording
   so that removing the route is noticed here.
 
+Added with the anonymous-visitor labels (`docs/conversion-failure-pipeline.md` §6.1),
+and **not yet reviewed** — the Bengali in particular needs a native speaker:
+
+- **"a random id kept in this browser … shown to us as “anonymous7”."** This
+  replaced "the report is anonymous", which became false the moment a
+  persistent browser id was sent. The id is a UUID in `localStorage`, stored
+  server-side only as a hash, and not linked to an account.
+- **"wait in this browser for up to 2 minutes … never more than 7 days."**
+  Reports are now cached in a `localStorage` outbox before sending.
+  `REPORT_QUEUE` is pinned by test to `OUTBOX_DRAIN_INTERVAL_MS` and
+  `DEFAULT_OUTBOX_MAX_AGE_MS`. For the same reason, "not stored anywhere"
+  under *Where conversion happens* now excepts the failure excerpt.
+- **Worth deciding:** whether a persistent id, even one used only to group
+  failure reports, sits comfortably with "no tracking" under *Cookies and
+  tracking*. It is not a cookie and is never used for anything else, so the
+  sentence stays literally true; the label could be dropped if you would
+  rather not carry an id at all.
+
 ## 4. Preconditions before this is merged
 
 1. **Read the wording**, English and Bengali, and edit

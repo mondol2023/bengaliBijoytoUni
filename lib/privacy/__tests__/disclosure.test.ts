@@ -18,9 +18,11 @@ import {
   PRIVACY_PAGE_INTRO,
   PRIVACY_PAGE_SECTIONS,
   PRIVACY_PAGE_TITLE,
+  REPORT_QUEUE,
   RETENTION,
   type Bilingual,
 } from "../disclosure";
+import { DEFAULT_OUTBOX_MAX_AGE_MS, OUTBOX_DRAIN_INTERVAL_MS } from "@/lib/conversionFailures/outbox";
 import { CONTEXT_WINDOW_CHARS } from "@/lib/conversionFailures/occurrence";
 import { RETENTION_DAYS } from "@/lib/conversionFailures/retention";
 
@@ -49,6 +51,20 @@ describe("the disclosure copy agrees with the code it describes", () => {
   it("states the retention periods the writer actually stamps", () => {
     expect(RETENTION.occurrenceDays).toBe(RETENTION_DAYS.conversionFailures);
     expect(RETENTION.patternDays).toBe(RETENTION_DAYS.failurePatterns);
+  });
+
+  it("states how long a report waits in the browser, as the outbox actually does", () => {
+    expect(REPORT_QUEUE.sendEveryMinutes * 60_000).toBe(OUTBOX_DRAIN_INTERVAL_MS);
+    expect(REPORT_QUEUE.maxDays * 24 * 60 * 60 * 1000).toBe(DEFAULT_OUTBOX_MAX_AGE_MS);
+  });
+
+  it("quotes the queue numbers in both languages", () => {
+    const paragraphs = PRIVACY_PAGE_SECTIONS.flatMap((s) => s.body);
+    for (const lang of ["en", "bn"] as const) {
+      const queue = paragraphs.find((b) => b[lang].includes(`${REPORT_QUEUE.sendEveryMinutes} `));
+      expect(queue, `${lang} paragraph quoting the minutes`).toBeDefined();
+      expect(queue![lang]).toContain(String(REPORT_QUEUE.maxDays));
+    }
   });
 
   it("quotes the window number in both languages of the converter line", () => {
