@@ -18,7 +18,7 @@ single-instance and the multi-instance case.
 | # | Finding | Severity | Status |
 |---|---|---|---|
 | 1 | Body was buffered before any bound applied | Medium | **Fixed** — `lib/security/readJsonBody.ts`, 512 KiB ceiling |
-| 2 | Counts can be poisoned to choose the published top N | **High**, latent | **Not fixed** — see the Phase 5 note below |
+| 2 | Counts can be poisoned to choose the published top N | **High**, latent | **Closed** — `4c0f69a`, `f28fc32`; residual stated in §2 |
 | 3 | Rate limiter is per-instance and resets on cold start | Medium | Known and documented; not fixed here |
 | 4 | Rate-limit identity collapses to one bucket without a proxy header | Low | Not fixed — needs a deployment answer first |
 | 5 | Snapshot `limit` is caller-chosen up to 200 | Low | Accepted |
@@ -144,6 +144,48 @@ the half of finding 2 that re-verification never addressed. Filtering the
 published snapshot by stored status is the cheap next step and needs no
 engine run — it is a change to what the endpoint serves, so it is proposed,
 not taken.
+
+**Phase 6: closed.** Two commits, and what each one is evidence for:
+
+- **`4c0f69a`** — the snapshot builder filters by each pattern's *current*
+  stored status, derived at read time
+  (`lib/conversionFailures/publishable.ts`). Only an `open` pattern is
+  published, and only a resolution whose provenance pattern is `open`. No
+  new stored field: a pattern the sweep marks `resolved` drops out of the
+  next build with no write beyond that status change, and a resolution
+  whose pattern has expired fails closed. Pinned by
+  `app/api/conversion-failures/known/route.test.ts` ("publication follows
+  current status": present in one build, absent in the next, only the
+  status changed, nothing written to the resolution).
+- **`f28fc32`** — the status is honest from the first write. Before it, the
+  occurrence-time re-verification ran only on the *update* path, so a single
+  anonymous report at the 1000 ceiling created an `open` pattern even for
+  text the engine converts cleanly, and with the filter above that is
+  exactly what gets published. Creation now takes the same pure verdict.
+  Pinned by `lib/firebase/__tests__/conversionFailures.test.ts`
+  ("re-verifies on creation…").
+
+Together that is mitigation 1's guarantee, reached through stored status
+rather than an engine run per build: **the snapshot publishes only
+sequences the current engine fails on**, as of the last write to that
+pattern or the last sweep. Invented text that converts cleanly never
+reaches it.
+
+**Residual, stated so it is not mistaken for closed:**
+
+- *Text containing at least one unmapped byte* still fails honestly, is
+  `open`, and can still be ranked into `patterns` by count. Mitigation 2
+  (rank by breadth) is what would address that, and it is not built. It is
+  not reachable by a user today: nothing renders the public `patterns`
+  array — the converter's only consumer of the snapshot,
+  `features/converter/resolutionSource.ts` → `resolutionMapFrom`, reads
+  `resolutions` alone, and a resolution reaches that array only after an
+  admin accepted it. If a UI ever renders `patterns`, reopen this.
+- *Propagation delay.* A status change reaches a reader after the
+  per-instance snapshot cache (60 s), the response's `max-age=60`, and the
+  client's 10-minute `localStorage` freshness. Nothing is applied from a
+  stale copy that the engine now converts, though: `runConversion` runs the
+  engine first and consults the store only for what it still fails on.
 
 ## 3. Does the rate limiter work in this deployment model?
 
