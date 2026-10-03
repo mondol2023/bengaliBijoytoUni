@@ -7,6 +7,8 @@
 import { describe, expect, it } from "vitest";
 import {
   AI_UNVERIFIED_LABEL,
+  FALLBACK_ACCEPTED_LABEL,
+  TBD_ACCEPTED_LABEL,
   TBD_LABEL,
   KNOWN_RESOLUTIONS_DEFAULT_LIMIT,
   KNOWN_RESOLUTIONS_MAX_BYTES,
@@ -97,6 +99,16 @@ describe("the label travels in the payload", () => {
     expect(TBD_LABEL.en).toContain("TBD");
     expect(TBD_LABEL.bn).toContain("TBD");
     expect(AI_UNVERIFIED_LABEL).toBe(TBD_LABEL);
+  });
+
+  it("holds the fallback_accepted marker the same way, in both languages", () => {
+    expect(TBD_ACCEPTED_LABEL.en).toContain("TBD");
+    expect(TBD_ACCEPTED_LABEL.bn).toContain("TBD");
+    expect(FALLBACK_ACCEPTED_LABEL).toBe(TBD_ACCEPTED_LABEL);
+    // Two different claims, so two different strings: an accepted fill must
+    // never read as the unverified one, or the reverse.
+    expect(FALLBACK_ACCEPTED_LABEL.en).not.toBe(AI_UNVERIFIED_LABEL.en);
+    expect(FALLBACK_ACCEPTED_LABEL.bn).not.toBe(AI_UNVERIFIED_LABEL.bn);
   });
 
   it("makes label and verification agree, as the schema requires", () => {
