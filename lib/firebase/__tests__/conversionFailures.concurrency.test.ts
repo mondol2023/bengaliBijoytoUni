@@ -34,6 +34,7 @@ vi.mock("../admin", () => ({ getAdminDb: vi.fn() }));
 
 import { getAdminDb } from "../admin";
 import { recordConversionFailures, type ConversionFailureInput } from "../conversionFailures";
+import { __resetWriteMetricsForTests, getWriteMetricsSnapshot } from "../writeMetrics";
 
 /** Matches `DEFAULT_MAX_TRANSACTION_ATTEMPTS` in `@google-cloud/firestore`. */
 const FIRESTORE_MAX_ATTEMPTS = 5;
@@ -263,6 +264,16 @@ describe("recordConversionFailures: atomic upsert under concurrent writes", () =
     expect(counts).toStrictEqual([5, 12]);
   });
 
+  it("counts a report that lost the race to create the pattern as an update", async () => {
+    // Every report's first attempt sees no pattern and takes the create
+    // branch; all but one are aborted and re-run as updates. The write
+    // metrics must record what committed, not what the first attempt planned.
+    __resetWriteMetricsForTests();
+    await reportConcurrently([1, 1, 1, 1, 1]);
+
+    const day = Object.values(getWriteMetricsSnapshot().days)[0];
+    expect(day.byCollection.failurePatterns.byOperation).toStrictEqual({ create: 1, update: 4 });
+  });
 });
 
 /**

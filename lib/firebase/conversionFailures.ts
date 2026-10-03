@@ -126,9 +126,12 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
 
   await db.runTransaction(async (tx) => {
     const patternSnap = await tx.get(patternRef);
+    // Decided afresh on every attempt. A report that loses the race to
+    // create the pattern is re-run as an update; a value left over from its
+    // aborted first attempt would count it as a second create.
+    patternOperation = patternSnap.exists ? "update" : "create";
 
     if (!patternSnap.exists) {
-      patternOperation = "create";
       const pattern: FailurePattern = {
         encodingId: input.encodingId,
         engineVersion: input.engineVersion,
