@@ -84,6 +84,10 @@ What is left for the maintainer, and none of it blocks code:
   project (it is what sets `VERCEL=1`). If it is off, the client IP is
   still read correctly from `x-forwarded-for`, which Vercel overwrites, but
   a proxy placed in front of Vercel would then go unnoticed.
+- The reverify sweep has no scheduler. A daily Vercel Cron job is proposed,
+  **not implemented**, in `docs/proposal-reverify-cron.md`. If it is
+  approved, it adds one manual step: set `CRON_SECRET` in the Vercel
+  production environment.
 
 ## 6. Backlog, not a task
 
