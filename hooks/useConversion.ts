@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import {
-  convertLegacyText,
-  detectEncoding,
-  type ConversionOutput,
-} from "@/features/converter/engine/pipeline";
+import { detectEncoding, type ConversionOutput } from "@/features/converter/engine/pipeline";
+import { computeConversion, snapshotRequest } from "@/features/converter/fallbackPipeline";
+import { loadResolutionSource } from "@/features/converter/resolutionSource";
+import type { ResolutionSource, RunConversionResult } from "@/features/converter/runConversion";
+import { isFallbackPipelineEnabled } from "@/lib/conversionFailures/serveFlags";
 import { listEncodings } from "@/features/converter/encodings/registry";
 import type { EncodingDefinition } from "@/features/converter/encodings/types";
 import { checkUsage, type UsageCheck } from "@/features/usage/usageService";
@@ -35,6 +35,12 @@ export interface UseConversionResult {
   isPending: boolean;
   output: ConversionOutput | null;
   error: AppError | null;
+  /**
+   * The fallback pipeline's view of `output`: null whenever
+   * `NEXT_PUBLIC_ENABLE_FALLBACK_PIPELINE` is off, and then the converter is
+   * exactly what it was before Phase 6. `output` is the engine's either way.
+   */
+  fallback: RunConversionResult | null;
   wordCount: number;
   clear: () => void;
 }
@@ -71,17 +77,45 @@ export function useConversion(initialTier: TierId = "easy"): UseConversionResult
   // Stable identity, so a memoized toolbar does not re-render on every keystroke.
   const clearInput = useCallback(() => setInputText(""), []);
 
-  const { output, error } = useMemo((): {
+  // Fixed at build time (it is a NEXT_PUBLIC_ variable), so reading it on
+  // every render costs nothing and cannot change between renders.
+  const pipelineEnabled = isFallbackPipelineEnabled();
+
+  // The snapshot, fetched once per encoding and never awaited by the typing
+  // path: until it lands, conversions simply have no fallbacks. Off, there is
+  // no request at all. Tagged with the encoding it was built for, so a
+  // snapshot still in flight when the encoding changes is never applied.
+  const [loaded, setLoaded] = useState<{ encodingId: string; source: ResolutionSource } | null>(
+    null,
+  );
+  useEffect(() => {
+    const request = snapshotRequest(pipelineEnabled, resolvedEncodingId);
+    if (!request) return;
+    const controller = new AbortController();
+    void loadResolutionSource({ ...request, signal: controller.signal }).then((source) => {
+      if (!controller.signal.aborted) setLoaded({ encodingId: request.encodingId, source });
+    });
+    return () => controller.abort();
+  }, [pipelineEnabled, resolvedEncodingId]);
+  const resolutions =
+    loaded !== null && loaded.encodingId === resolvedEncodingId ? loaded.source : undefined;
+
+  const { output, error, fallback } = useMemo((): {
     output: ConversionOutput | null;
     error: AppError | null;
+    fallback: RunConversionResult | null;
   } => {
-    if (debouncedText.length === 0) return { output: null, error: null };
-    if (!usage.withinLimit) return { output: null, error: null };
-    if (!resolvedEncodingId) return { output: null, error: null };
+    if (debouncedText.length === 0) return { output: null, error: null, fallback: null };
+    if (!usage.withinLimit) return { output: null, error: null, fallback: null };
+    if (!resolvedEncodingId) return { output: null, error: null, fallback: null };
 
-    const result = convertLegacyText(debouncedText, resolvedEncodingId);
-    return result.ok ? { output: result.value, error: null } : { output: null, error: result.error };
-  }, [debouncedText, resolvedEncodingId, usage.withinLimit]);
+    return computeConversion({
+      text: debouncedText,
+      encodingId: resolvedEncodingId,
+      pipelineEnabled,
+      resolutions,
+    });
+  }, [debouncedText, resolvedEncodingId, usage.withinLimit, pipelineEnabled, resolutions]);
 
   return {
     inputText,
@@ -99,6 +133,7 @@ export function useConversion(initialTier: TierId = "easy"): UseConversionResult
     isPending,
     output,
     error,
+    fallback,
     wordCount,
     clear: clearInput,
   };

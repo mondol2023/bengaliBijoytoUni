@@ -10,6 +10,7 @@ import { EncodingSelector } from "./EncodingSelector";
 import { TierSelector } from "./TierSelector";
 import { UsageMeter } from "./UsageMeter";
 import { ConversionWarnings } from "./ConversionWarnings";
+import { ConversionOutputText, FallbackSummary } from "./ConversionOutputText";
 import { CopyButton } from "./CopyButton";
 import { SaveToHistoryButton } from "@/components/history/SaveToHistoryButton";
 import { ConversionLogPanel } from "@/components/log/ConversionLogPanel";
@@ -63,6 +64,7 @@ export function ConverterWorkspace() {
     isOverLimit,
     output,
     error,
+    fallback,
     wordCount,
     clear,
   } = conversion;
@@ -258,13 +260,18 @@ export function ConverterWorkspace() {
             ) : output?.unicodeText ? (
               // `lang` goes on the Bengali itself, not the panel: the panel
               // also holds English placeholder/error copy, which a screen
-              // reader would then read with a Bengali voice.
-              <span lang="bn">{output.unicodeText}</span>
+              // reader would then read with a Bengali voice. With the
+              // fallback pipeline off, `fallback` is null and this renders
+              // exactly the `<span lang="bn">` it always did.
+              <ConversionOutputText text={output.unicodeText} fallback={fallback} />
             ) : (
               <span className="text-sm text-foreground/40">Converted text will appear here…</span>
             )}
           </div>
           <ConversionWarnings validation={output?.validation ?? null} />
+          {fallback && resolvedEncodingId && (
+            <FallbackSummary fallback={fallback} encodingId={resolvedEncodingId} wordCount={wordCount} />
+          )}
         </div>
       </motion.div>
 
