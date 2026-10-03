@@ -21,6 +21,7 @@ import { useIssueLog } from "@/hooks/useIssueLog";
 import { useConversionFailureReporter } from "@/hooks/useConversionFailureReporter";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { SAMPLE_TEXT } from "@/features/converter/sampleText";
+import { conversionUsageRecord } from "@/features/usage/conversionUsage";
 import { downloadTextFile } from "@/lib/utils/download";
 import { motionTokens, springs, staggerChildren, staggerDelayChildren } from "@/lib/motion/tokens";
 import type { SafeErrorResponse } from "@/lib/errors/handlers";
@@ -110,16 +111,9 @@ export function ConverterWorkspace() {
       const response = await fetch("/api/conversions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({
-          encodingId: resolvedEncodingId,
-          inputType: "text",
-          charCount: usage.used,
-          wordCount,
-          fileFormat: null,
-          durationMs: 0,
-          status: "success",
-          error: null,
-        }),
+        body: JSON.stringify(
+          conversionUsageRecord({ encodingId: resolvedEncodingId, usage, wordCount }),
+        ),
       });
       const payload = (await response.json()) as { ok: true } | { ok: false; error: SafeErrorResponse };
       return payload.ok ? null : payload.error;

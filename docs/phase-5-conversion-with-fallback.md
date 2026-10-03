@@ -297,6 +297,15 @@ Recommended answers are recorded in the Phase 5 report and **not
 implemented**. Nothing in the code above depends on either answer: fallbacks
 are counted nowhere, and no resolution is retired by anything.
 
+**Phase 6 update: question 1 is decided.** A fallback counts as converted for
+usage and tier limits, because the engine processed the full input;
+`fallback_unverified` counts identically to `fallback_accepted`, and an
+unresolved sequence counts the same way. The count is the input's
+(`checkUsage`, and `conversionUsageRecord` for what `/api/conversions`
+records), and the "N filled · K unresolved" breakdown is reported alongside
+it, never subtracted from it. Pinned by
+`features/usage/__tests__/conversionUsage.test.ts`. Question 3 stays held.
+
 ### Blocked: the deployment topology
 
 The repository does not say what this deploys onto — no `vercel.json`, no

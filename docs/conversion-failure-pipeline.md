@@ -44,6 +44,11 @@ Recorded here so the documented design and the code agree.
   flagged as a fallback and never presented as authoritative.
 - Unverified AI results are served **only** behind a feature flag that is **off by
   default**, and are labelled "AI-suggested, unverified".
+- A served fallback **counts as converted** for usage and tier limits (Phase 6 §4): the
+  engine processed the full input, so the count is the input's. `fallback_unverified` counts
+  identically to `fallback_accepted`, and an unresolved sequence counts the same way. The
+  "filled / unresolved" breakdown is shown alongside the count and never changes it
+  (`features/usage/conversionUsage.ts`, pinned by its test).
 
 Consequence for the code: the absence of a provider key is not what keeps AI out of the
 conversion path, so nothing may come to depend on that. A populated `GEMINI_API_KEY` in a

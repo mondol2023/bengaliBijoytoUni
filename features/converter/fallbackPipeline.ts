@@ -22,9 +22,11 @@
  *
  * ## Usage
  *
- * Tier limits are `checkUsage` on the *input* (`features/usage`), so a
- * sequence filled from the store, filled from an unverified entry, or left
- * unresolved costs the same. Nothing here touches usage, by construction.
+ * Tier limits are `checkUsage` on the *input* (`features/usage`), and the
+ * recorded count is `conversionUsageRecord`, which takes no fallback result —
+ * so a sequence filled from the store, filled from an unverified entry, or
+ * left unresolved costs the same (Phase 6 §4). `ConversionBreakdown` below is
+ * the trust-facing view and feeds nothing that is counted.
  */
 import { computeRulesHash, convertLegacyText, type ConversionOutput } from "./engine/pipeline";
 import { getEncoding } from "./encodings/registry";
