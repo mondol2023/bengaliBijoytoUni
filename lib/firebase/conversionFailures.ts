@@ -26,7 +26,11 @@ import {
 import { computeFailurePatternId } from "@/lib/conversionFailures/patternId";
 import { CONVERSION_FAILURE_LIMITS } from "@/lib/conversionFailures/limits";
 import { retentionFields } from "@/lib/conversionFailures/retention";
-import { statusCorrectionOnOccurrence } from "@/lib/conversionFailures/reverify";
+import {
+  reverifyPattern,
+  statusAfterReverify,
+  statusCorrectionOnOccurrence,
+} from "@/lib/conversionFailures/reverify";
 import { countWrites, type WriteOperation } from "./writeMetrics";
 import { logAppError } from "@/lib/errors/handlers";
 
@@ -134,7 +138,19 @@ async function recordOne(input: ConversionFailureInput): Promise<string> {
         firstSeenAt: now,
         lastSeenAt: now,
         sampleOccurrenceIds: [occurrenceRef.id],
-        status: "open",
+        // Re-verified on creation too, not only on the next occurrence. The
+        // snapshot publishes only `open` patterns, so a status taken on trust
+        // here would let one anonymous report put a sequence the engine
+        // converts cleanly -- invented text, or a client on an older engine
+        // -- straight into the public snapshot until a second occurrence or
+        // a sweep corrected it. Same pure call, same caller-free verdict.
+        status: statusAfterReverify(
+          reverifyPattern({
+            encodingId: input.encodingId,
+            failedSequence: input.failedSequence,
+            engineVersion: input.engineVersion,
+          }),
+        ),
       };
       tx.set(patternRef, {
         ...failurePatternSchema.parse(pattern),

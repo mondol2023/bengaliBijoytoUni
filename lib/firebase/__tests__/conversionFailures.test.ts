@@ -298,12 +298,29 @@ describe("recordConversionFailures: opportunistic re-verification", () => {
 
   it("resolves a pattern the table has since grown a rule for", async () => {
     // "Av" is a live Bijoy rule, so a stored pattern for it converts now.
+    // Seeded as `open`, the way every record written before create-time
+    // re-verification is stored.
     await recordConversionFailures([input({ failedSequence: "Av" })]);
-    const [[key]] = patterns(db);
-    expect(db.store.get(key)?.status).toBe("open");
+    const [[key, pattern]] = patterns(db);
+    db.store.set(key, { ...pattern, status: "open" });
 
     await recordConversionFailures([input({ failedSequence: "Av" })]);
     expect(db.store.get(key)?.status).toBe("resolved");
+  });
+
+  it("re-verifies on creation, so one report cannot store a converting sequence as open", async () => {
+    // The one-shot poisoning case: a single anonymous report, at the
+    // occurrence-count ceiling, of text the engine converts cleanly. The
+    // snapshot publishes only `open` patterns, so this must not be one.
+    await recordConversionFailures([input({ failedSequence: "Av", occurrenceCount: 1000 })]);
+    const [[, created]] = patterns(db);
+    expect(created.status).toBe("resolved");
+  });
+
+  it("creates a pattern the engine genuinely fails on as open", async () => {
+    await recordConversionFailures([input({ failedSequence: UNMAPPED })]);
+    const [[, created]] = patterns(db);
+    expect(created.status).toBe("open");
   });
 
   it("never deletes the pattern or its occurrences", async () => {

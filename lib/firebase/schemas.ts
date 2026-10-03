@@ -279,7 +279,13 @@ export const failurePatternSchema = z.object({
   lastSeenAt: z.string(),
   /** Small capped list of recent `conversionFailures` doc IDs, for admin preview without a second query. */
   sampleOccurrenceIds: z.array(z.string()),
-  /** Set to `resolved` only by an explicit admin action once a mapping-rule fix has shipped — never automated. */
+  /**
+   * The server's own verdict, never a caller's: `resolved` exactly when the
+   * current engine converts `failedSequence` cleanly
+   * (`lib/conversionFailures/reverify.ts`). Decided on creation, corrected on
+   * each later occurrence and by the engine-change sweep. The public snapshot
+   * publishes only `open` patterns (`lib/conversionFailures/publishable.ts`).
+   */
   status: z.enum(["open", "resolved"]),
 });
 export type FailurePattern = z.infer<typeof failurePatternSchema>;
