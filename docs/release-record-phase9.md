@@ -87,13 +87,49 @@ immediately if:
 
 Other errors are **recorded, not acted on**, to form the baseline for any later numeric threshold.
 
-Open question for the owner: `rollout-canary-and-rollback.md` (Stage 1, "Abort") also lists
-*any* `FALLBACK_PIPELINE_ERROR`, *any* `resolutionsUnverified > 0`, and an admin-confirmed
-wrong filled segment. `resolutionsUnverified > 0` and `serveUnverified: true` are covered by
-items 1–2. A `FALLBACK_PIPELINE_ERROR` degrades to engine-only output by design (`164c9f9`),
-so on its own it may not meet item 6. Until the owner says otherwise, this record treats any
-`FALLBACK_PIPELINE_ERROR` as **stop and investigate**. A filled segment an admin confirms is
-wrong means rejecting that resolution, as the existing plan says.
+`rollout-canary-and-rollback.md` (Stage 1, "Abort") also lists *any* `FALLBACK_PIPELINE_ERROR`,
+*any* `resolutionsUnverified > 0`, and an admin-confirmed wrong filled segment.
+`resolutionsUnverified > 0` and `serveUnverified: true` are covered by items 1–2. A filled
+segment an admin confirms is wrong means rejecting that resolution, as the existing plan says.
+
+#### `FALLBACK_PIPELINE_ERROR` (owner decision, 2026-10-04)
+
+A `FALLBACK_PIPELINE_ERROR` is **not** an automatic hard abort. By design it degrades to
+engine-only output (`164c9f9`), so on its own it is not a user-visible failure. For this
+canary, this policy replaces the "any `FALLBACK_PIPELINE_ERROR`" line in
+`rollout-canary-and-rollback.md`:
+
+| Case | Action |
+|---|---|
+| Isolated error; normal conversion output returned; no privacy or security issue | **Record and investigate** |
+| Repeated or systemic errors | **Hard abort** |
+| The error causes missing or incorrect normal output | **Hard abort** (item 6) |
+| Application instability | **Hard abort** (item 5) |
+| Unexpected exposure of user or model data | **Hard abort** (item 3) |
+| Evidence the fallback path bypasses its safety controls | **Hard abort** |
+
+There is still no numeric threshold for the first canary.
+
+## Release gate: build and project verification (owner-approved, 2026-10-04)
+
+The Preview release must prove from the actual deployed artifacts that:
+
+- `NEXT_PUBLIC_ENABLE_FALLBACK_PIPELINE` is **on**;
+- `SERVE_UNVERIFIED_AI` is **off**;
+- the Firebase project ID is the **approved staging project**.
+
+A string in a bundle proves the configuration only. All four checks are required:
+
+1. **Client bundle:** the inlined `NEXT_PUBLIC_FIREBASE_PROJECT_ID` is the staging ID.
+2. **Server/runtime configuration:** the Admin SDK's project ID (`FIREBASE_ADMIN_PROJECT_ID`)
+   is the staging ID.
+3. **Vercel Preview environment:** the canary branch's `NEXT_PUBLIC_FIREBASE_*` and
+   `FIREBASE_ADMIN_*` variables are the staging values.
+4. **Controlled Firestore operation:** a controlled write and read-back from the deployed
+   Preview lands in the staging project and is absent from Production. This is the strongest
+   of the four checks.
+
+Not yet implemented. It depends on a staging project ID existing.
 
 ## Stage 1 execution log
 
