@@ -455,3 +455,47 @@ describe("GET /api/conversion-failures/known: publication follows current status
     expect(getFailurePatternStatuses).toHaveBeenCalledWith(["p-1", "p-2"]);
   });
 });
+
+describe("GET /api/conversion-failures/known: build log line", () => {
+  beforeEach(() => {
+    state.adminConfigured = true;
+    vi.mocked(listFailurePatterns).mockReset();
+    vi.mocked(listFailurePatterns).mockResolvedValue([]);
+    vi.mocked(getFailurePatternStatuses).mockReset();
+    vi.mocked(getFailurePatternStatuses).mockResolvedValue(new Map([["pattern-abc", "open"]]));
+    vi.mocked(listResolutionsForEncoding).mockReset();
+    vi.unstubAllEnvs();
+  });
+
+  function builtLines(spy: { mock: { calls: unknown[][] } }) {
+    return spy.mock.calls
+      .map(([line]) => line)
+      .filter((line): line is string => typeof line === "string" && line.includes("known_snapshot_built"))
+      .map((line) => JSON.parse(line));
+  }
+
+  it("emits one line per build, counting an unverified entry it published, and none on a cache hit", async () => {
+    vi.stubEnv("SERVE_UNVERIFIED_AI", "true");
+    vi.mocked(listResolutionsForEncoding).mockResolvedValue([
+      storedResolution(),
+      storedResolution({ id: "resolution-2", lookupKey: "lookup-2", status: "completed", reviewDecision: null }),
+    ] as never);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await GET(makeRequest("?encodingId=bijoy&limit=181"));
+    await GET(makeRequest("?encodingId=bijoy&limit=181"));
+
+    const lines = builtLines(log);
+    expect(lines).toStrictEqual([
+      expect.objectContaining({
+        metric: "known_snapshot_built",
+        encodingId: "bijoy",
+        serveUnverified: true,
+        resolutionsAccepted: 1,
+        resolutionsUnverified: 1,
+      }),
+    ]);
+    expect(JSON.stringify(lines)).not.toContain("আ");
+    log.mockRestore();
+  });
+});

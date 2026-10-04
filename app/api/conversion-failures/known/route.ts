@@ -16,6 +16,7 @@ import {
 } from "@/lib/conversionFailures/publishable";
 import { selectServableResolutions } from "@/lib/conversionFailures/selectResolutions";
 import { isServeUnverifiedAiEnabled } from "@/lib/conversionFailures/serveFlags";
+import { emitKnownSnapshotBuilt } from "@/lib/conversionFailures/snapshotLog";
 import { AppErrors } from "@/lib/errors/types";
 import { failResponder, toAppError } from "@/lib/errors/handlers";
 import { isFirebaseAdminConfigured } from "@/lib/firebase/admin";
@@ -197,6 +198,8 @@ export async function GET(request: NextRequest) {
       };
       entry = { snapshot, etag: computeEtag(snapshot) };
       await snapshotCache.set(cacheKey, entry);
+      // Once per build, never per request: counts of what is now public.
+      emitKnownSnapshotBuilt(snapshot, serveUnverified);
     }
 
     if (ifNoneMatchMatches(request.headers.get("if-none-match"), entry.etag)) {
