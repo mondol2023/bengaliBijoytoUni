@@ -24,6 +24,7 @@ import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStorage, type Storage } from "firebase-admin/storage";
+import { previewProductionConflict, serviceAccountProjectId } from "./projectGuard";
 
 const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
@@ -61,6 +62,14 @@ function getAdminApp(): App {
     );
   }
   if (!app) {
+    // Phase 10: a Preview deployment must never reach Production, so this
+    // throws rather than initializing. See lib/firebase/projectGuard.ts.
+    const conflict = previewProductionConflict({
+      vercelEnv: process.env.VERCEL_ENV,
+      adminProjectId: projectId,
+      clientEmail,
+    });
+    if (conflict !== null) throw new Error(conflict);
     if (getApps().length > 0) {
       app = getApps()[0]!;
     } else if (isFirebaseEmulated) {
@@ -94,4 +103,22 @@ export function getAdminDb(): Firestore {
 export function getAdminStorage(): Storage {
   storageInstance ??= getStorage(getAdminApp());
   return storageInstance;
+}
+
+/**
+ * Which project the Admin SDK is configured for, for the runtime identity
+ * check (`app/api/admin/firebase-identity/route.ts`). Project ids only — the
+ * service account is reduced to the project its email names, and nothing
+ * here touches the private key.
+ */
+export function getAdminFirebaseIdentity(): {
+  projectId: string | null;
+  serviceAccountProjectId: string | null;
+  emulated: boolean;
+} {
+  return {
+    projectId: projectId ?? null,
+    serviceAccountProjectId: serviceAccountProjectId(clientEmail),
+    emulated: isFirebaseEmulated,
+  };
 }
