@@ -6,12 +6,13 @@
  */
 import { describe, expect, it } from "vitest";
 import * as guard from "../projectGuard";
+import { PROD_SERVICE_ACCOUNT, serviceAccount } from "./syntheticAccounts";
 // Plain .mjs with no declarations; `allowJs` lets tsc infer its shape.
 import * as script from "../../../scripts/firebaseTarget.mjs";
 
 const STAGING = "legacy2uni-staging";
-const STAGING_EMAIL = `convert2uni-server@${STAGING}.iam.gserviceaccount.com`;
-const PROD_EMAIL = "firebase-adminsdk-x1@legacy2uni.iam.gserviceaccount.com";
+const STAGING_EMAIL = serviceAccount("convert2uni-server", STAGING);
+const PROD_EMAIL = PROD_SERVICE_ACCOUNT;
 
 describe("firebaseTarget.mjs agrees with projectGuard.ts", () => {
   it("names the same Production project and refusal", () => {
@@ -91,7 +92,7 @@ describe("requireStagingTarget", () => {
   it("refuses a service account from another project", () => {
     expect(() =>
       script.requireStagingTarget(
-        { ...adminEnv, FIREBASE_ADMIN_CLIENT_EMAIL: "x@someone-else.iam.gserviceaccount.com" },
+        { ...adminEnv, FIREBASE_ADMIN_CLIENT_EMAIL: serviceAccount("x", "someone-else") },
         { admin: true },
       ),
     ).toThrow(/is not a service account of/);

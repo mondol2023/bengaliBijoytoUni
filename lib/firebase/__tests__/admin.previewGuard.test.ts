@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STAGING_REFUSAL_MESSAGE } from "../projectGuard";
+import { PROD_SERVICE_ACCOUNT, STAGING_SERVICE_ACCOUNT } from "./syntheticAccounts";
 
 const initializeApp = vi.fn(() => ({ name: "app" }));
 
@@ -12,8 +13,8 @@ vi.mock("firebase-admin/firestore", () => ({ getFirestore: vi.fn(() => ({ kind: 
 vi.mock("firebase-admin/auth", () => ({ getAuth: vi.fn(() => ({})) }));
 vi.mock("firebase-admin/storage", () => ({ getStorage: vi.fn(() => ({})) }));
 
-const PROD_EMAIL = "firebase-adminsdk-x1@legacy2uni.iam.gserviceaccount.com";
-const STAGING_EMAIL = "convert2uni-server@legacy2uni-staging.iam.gserviceaccount.com";
+const PROD_EMAIL = PROD_SERVICE_ACCOUNT;
+const STAGING_EMAIL = STAGING_SERVICE_ACCOUNT;
 
 function configure(env: { vercelEnv?: string; projectId: string; clientEmail: string }) {
   vi.stubEnv("VERCEL_ENV", env.vercelEnv as string);

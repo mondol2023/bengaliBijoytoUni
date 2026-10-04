@@ -7,6 +7,7 @@ import {
   previewProductionConflict,
   serviceAccountProjectId,
 } from "../projectGuard";
+import { PROD_SERVICE_ACCOUNT, STAGING_SERVICE_ACCOUNT } from "./syntheticAccounts";
 
 describe("checkStagingTarget", () => {
   it("accepts a well-formed staging project id", () => {
@@ -69,10 +70,10 @@ describe("isWellFormedProjectId", () => {
 
 describe("serviceAccountProjectId", () => {
   it("reads the project out of a service-account email", () => {
-    expect(serviceAccountProjectId("convert2uni-server@legacy2uni-staging.iam.gserviceaccount.com")).toBe(
+    expect(serviceAccountProjectId(STAGING_SERVICE_ACCOUNT)).toBe(
       "legacy2uni-staging",
     );
-    expect(serviceAccountProjectId("firebase-adminsdk-x1@legacy2uni.iam.gserviceaccount.com")).toBe("legacy2uni");
+    expect(serviceAccountProjectId(PROD_SERVICE_ACCOUNT)).toBe("legacy2uni");
   });
 
   it("returns null for anything that is not a project service account", () => {
@@ -83,8 +84,8 @@ describe("serviceAccountProjectId", () => {
 });
 
 describe("previewProductionConflict", () => {
-  const prodEmail = "firebase-adminsdk-x1@legacy2uni.iam.gserviceaccount.com";
-  const stagingEmail = "convert2uni-server@legacy2uni-staging.iam.gserviceaccount.com";
+  const prodEmail = PROD_SERVICE_ACCOUNT;
+  const stagingEmail = STAGING_SERVICE_ACCOUNT;
 
   it("refuses a Preview deployment whose Admin SDK project is Production", () => {
     expect(

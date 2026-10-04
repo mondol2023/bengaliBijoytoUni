@@ -8,12 +8,13 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { STAGING_REFUSAL_MESSAGE } from "../projectGuard";
+import { PROD_SERVICE_ACCOUNT, serviceAccount } from "./syntheticAccounts";
 // Plain .mjs with no declarations; `allowJs` lets tsc infer its shape.
 import * as script from "../../../scripts/stagingFirebase.mjs";
 
 const SCRIPT = path.resolve(__dirname, "../../../scripts/stagingFirebase.mjs");
 const STAGING = "legacy2uni-staging";
-const STAGING_EMAIL = `convert2uni-server@${STAGING}.iam.gserviceaccount.com`;
+const STAGING_EMAIL = serviceAccount("convert2uni-server", STAGING);
 
 function runScript(args: string[], env: Record<string, string>) {
   const result = spawnSync(process.execPath, [SCRIPT, ...args], {
@@ -67,7 +68,7 @@ describe("the CLI fails closed", () => {
     const result = runScript(["seed", "--apply"], {
       STAGING_FIREBASE_PROJECT_ID: STAGING,
       FIREBASE_ADMIN_PROJECT_ID: "legacy2uni",
-      FIREBASE_ADMIN_CLIENT_EMAIL: "firebase-adminsdk-x1@legacy2uni.iam.gserviceaccount.com",
+      FIREBASE_ADMIN_CLIENT_EMAIL: PROD_SERVICE_ACCOUNT,
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(STAGING_REFUSAL_MESSAGE);
