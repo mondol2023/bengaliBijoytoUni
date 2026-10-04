@@ -14,7 +14,7 @@ how to undo each one.
 |---|---|
 | Repository | `convert2uni/`, branch `feat/font-conversion-hardening` |
 | Starting HEAD | `c8dc10b`. The brief named `7b4db7d`; eight commits landed after it (`f34666a`..`c8dc10b`: the stale-doc fixes, legacy2uni Phase 7 verification, anonymous visitor labels + report outbox). |
-| Working tree at start | Four files with the owner's own uncommitted edits (`components/documents/DocumentUploadWorkspace.tsx`, `docs/conversion-failure-pipeline.md`, `firestore.rules`, `hooks/useDocumentConversion.ts`). Left unstaged; none is part of this work. |
+| Working tree at start | Four files with the owner's own uncommitted edits (`components/documents/DocumentUploadWorkspace.tsx`, `docs/conversion-failure-pipeline.md`, `firestore.rules`, `hooks/useDocumentConversion.ts`). Never staged by this work; the owner committed them as `e77c9f2` ("uup1") during it. None is part of this work. |
 | Topology | Vercel, serverless, multi-instance. Every in-memory structure is per instance; shared state is Firestore. |
 | Framework | Next.js 16 (App Router), React 19, Node runtime for every route below. |
 
