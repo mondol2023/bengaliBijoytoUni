@@ -15,6 +15,11 @@ export const motionTokens = {
     /** Continuous background motion only (the foundry ground drift) — never a UI transition. */
     ambient: 48,
   },
+  /** Fraction of the scroll distance each background layer travels — its depth. */
+  parallax: {
+    far: 0.18,
+    near: 0.42,
+  },
   easing: {
     smooth: [0.22, 1, 0.36, 1] as const,
     standard: [0.4, 0, 0.2, 1] as const,
@@ -45,6 +50,8 @@ export const springs = {
   snappy: { type: "spring", stiffness: 400, damping: 30 } as const,
   gentle: { type: "spring", stiffness: 260, damping: 26 } as const,
   bouncy: { type: "spring", stiffness: 500, damping: 20 } as const,
+  /** Scroll-linked background travel: a long, soft follow that settles after the page stops. */
+  glide: { stiffness: 60, damping: 20, mass: 0.8 } as const,
 };
 
 /** Stagger interval kept within the 0.05–0.10s band the skill mandates. */

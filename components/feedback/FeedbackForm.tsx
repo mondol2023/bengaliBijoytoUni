@@ -141,7 +141,7 @@ export function FeedbackForm({
         animate={{ opacity: 1, y: 0 }}
         transition={springs.gentle}
         className={cn(
-          "flex flex-col items-start gap-3 rounded-lg border border-success/30 bg-success/10 p-4",
+          "sheet flex flex-col items-start gap-3 p-4",
           className,
         )}
       >
@@ -162,9 +162,9 @@ export function FeedbackForm({
   return (
     <section
       aria-labelledby="feedback-heading"
-      className={cn("flex flex-col rounded-lg border border-border bg-surface", className)}
+      className={cn("sheet flex flex-col", className)}
     >
-      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+      <div className="sheet-band justify-start">
         <MessageSquarePlus className="h-4 w-4 shrink-0 text-foreground/60" aria-hidden />
         <h2 id="feedback-heading" className="text-sm font-semibold">
           Report a problem or leave a review
@@ -201,9 +201,9 @@ export function FeedbackForm({
                     aria-label={`${value} out of 5`}
                     aria-pressed={rating === value}
                     onClick={() => setRating(rating === value ? null : value)}
-                    className="rounded p-0.5 text-foreground/40 transition-colors hover:text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    className="rounded-sm p-1 text-foreground/50 transition-colors hover:text-accent"
                   >
-                    <Star className={cn("h-5 w-5", isFilled && "fill-warning text-warning")} aria-hidden />
+                    <Star className={cn("h-5 w-5", isFilled && "fill-accent text-accent")} aria-hidden />
                   </button>
                 );
               })}
@@ -221,9 +221,9 @@ export function FeedbackForm({
             rows={4}
             required
             placeholder="e.g. the conjunct in my second paragraph came out as three separate letters…"
-            className="resize-y rounded-md border border-border bg-background p-3 text-sm outline-none placeholder:text-foreground/40 focus-visible:ring-2 focus-visible:ring-accent"
+            className="resize-y rounded-md border border-border bg-background p-3 text-sm outline-none placeholder:text-foreground/60 focus-visible:ring-2 focus-visible:ring-accent"
           />
-          <span className="text-xs text-foreground/50">
+          <span className="font-mono text-xs tabular-nums text-foreground/60">
             {trimmed.length.toLocaleString()} / {FEEDBACK_LIMITS.maxMessageLength.toLocaleString()}
           </span>
         </label>
@@ -232,7 +232,7 @@ export function FeedbackForm({
           <label htmlFor={emailId} className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">
               Email{" "}
-              <span className="font-normal text-foreground/50">(optional — only if you want a reply)</span>
+              <span className="font-normal text-foreground/60">(optional — only if you want a reply)</span>
             </span>
             <input
               id={emailId}
@@ -242,7 +242,7 @@ export function FeedbackForm({
               maxLength={254}
               autoComplete="email"
               placeholder="you@example.com"
-              className="h-10 rounded-md border border-border bg-background px-3 text-sm outline-none placeholder:text-foreground/40 focus-visible:ring-2 focus-visible:ring-accent"
+              className="h-10 rounded-md border border-border bg-background px-3 text-sm outline-none placeholder:text-foreground/60 focus-visible:ring-2 focus-visible:ring-accent"
             />
           </label>
         )}
@@ -279,7 +279,7 @@ export function FeedbackForm({
             >
               <div
                 role="alert"
-                className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+                className="flex items-start gap-2 border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
               >
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                 <span>{error.message}</span>
@@ -293,7 +293,7 @@ export function FeedbackForm({
             Send feedback
           </Button>
           {!user && (
-            <span className="text-xs text-foreground/50">Sending anonymously — no account needed.</span>
+            <span className="text-xs text-foreground/60">Sending anonymously — no account needed.</span>
           )}
         </div>
       </form>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Check, History } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Check, History, Loader2 } from "lucide-react";
+import { MicroButton } from "@/components/ui/MicroButton";
 import type { SafeErrorResponse } from "@/lib/errors/handlers";
 
 /**
@@ -35,16 +35,21 @@ export function SaveToHistoryButton({
 
   return (
     <div className="flex items-center gap-2">
-      <Button
-        variant="ghost"
-        size="sm"
+      <MicroButton
         onClick={handleClick}
         disabled={disabled || status === "saving"}
-        loading={status === "saving"}
-        leftIcon={status === "saved" ? <Check className="h-4 w-4" aria-hidden /> : <History className="h-4 w-4" aria-hidden />}
+        icon={
+          status === "saving" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : status === "saved" ? (
+            <Check className="h-3.5 w-3.5" aria-hidden />
+          ) : (
+            <History className="h-3.5 w-3.5" aria-hidden />
+          )
+        }
       >
-        {status === "saved" ? "Saved" : "Save to history"}
-      </Button>
+        {status === "saved" ? "Saved" : "Save"}
+      </MicroButton>
       {error && <span className="text-xs text-danger">{error}</span>}
     </div>
   );

@@ -40,8 +40,8 @@ import { firestoreCounterStore } from "@/lib/firebase/sharedCounter";
 import { createInFlightMap } from "./inFlight";
 import { withProviderRetry } from "./retry";
 import type { ConversionResolutionRequest, ProviderId, ResolutionOptions } from "./types";
-import type { ProviderError } from "./errors";
-import { AppErrors, type AppError, type Result } from "../errors/types";
+import { providerErrorToAppError } from "./errors";
+import { AppErrors, type Result } from "../errors/types";
 import { logAppError } from "../errors/handlers";
 
 /**
@@ -103,35 +103,6 @@ export function computeResolutionKey(input: {
     input.rulesHash ?? "",
   ].join("|");
   return createHash("sha256").update(key, "utf8").digest("hex");
-}
-
-/** Maps a Phase 5 `ProviderError` to the app-wide safe error model (§19) — never a generic 500 where a more precise status exists, never `debug`/API-key material leaking into the response. */
-function mapProviderErrorToAppError(error: ProviderError): AppError {
-  switch (error.code) {
-    case "provider_rate_limited":
-      return AppErrors.rateLimit(error.message, { details: { retryAfterSeconds: error.retryAfterSeconds ?? 60 } });
-    case "provider_not_registered":
-    case "provider_content_rejected":
-      return AppErrors.validation(error.message);
-    // 404, not 500: the deployment-wide switch being off is a deliberate
-    // configuration, not a fault, and the endpoint genuinely offers nothing
-    // here. It also keeps a disabled deployment from confirming which
-    // providers exist, matching the check's placement in `registry.ts`.
-    case "provider_disabled":
-      return AppErrors.notFound(error.message);
-    // 429 with the other throttles: an admin who waits gets served, which is
-    // what a rate-limit status means and what the UI already handles.
-    case "provider_budget_exhausted":
-      return AppErrors.rateLimit(error.message, { details: { retryAfterSeconds: 3_600 } });
-    case "provider_budget_unavailable":
-    case "provider_not_configured":
-    case "provider_authentication_failed":
-    case "provider_timeout":
-    case "provider_unavailable":
-    case "provider_invalid_response":
-    case "provider_unknown_error":
-      return AppErrors.unknown(error.message, { debug: error.debug });
-  }
 }
 
 /**
@@ -265,7 +236,7 @@ async function runResolution(
 ): Promise<Result<ResolveConversionFailureOutput>> {
   const providerResult = getResolutionProvider(input.providerId);
   if (!providerResult.ok) {
-    return { ok: false, error: mapProviderErrorToAppError(providerResult.error) };
+    return { ok: false, error: providerErrorToAppError(providerResult.error) };
   }
   const provider = providerResult.value;
 
@@ -364,7 +335,7 @@ async function runResolution(
   // failed still consumed a request.
   const reservation = await dailyCallBudget.reserve();
   if (!reservation.ok) {
-    return { ok: false, error: mapProviderErrorToAppError(reservation.error) };
+    return { ok: false, error: providerErrorToAppError(reservation.error) };
   }
 
   // Retries are bounded and only for failures that are about the moment
@@ -393,7 +364,7 @@ async function runResolution(
         { route: "lib/ai/resolveConversionFailure", patternId: input.patternId },
       );
     }
-    return { ok: false, error: mapProviderErrorToAppError(providerCallResult.error) };
+    return { ok: false, error: providerErrorToAppError(providerCallResult.error) };
   }
 
   const resolution = providerCallResult.value;

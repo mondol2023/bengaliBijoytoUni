@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AlertCircle, AlertTriangle, ChevronDown, ScrollText, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { MicroButton } from "@/components/ui/MicroButton";
 import { useConversionLog } from "@/hooks/useConversionLog";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { motionTokens, springs } from "@/lib/motion/tokens";
@@ -56,11 +55,16 @@ function LogRow({ event }: { event: ConversionLogEvent }) {
           <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden />
         )}
         <span className="text-sm font-semibold">{KIND_LABELS[event.kind]}</span>
-        <Badge tone={isError ? "danger" : "warning"}>{isError ? "Error" : "Warning"}</Badge>
-        <Badge tone="neutral">{SOURCE_LABELS[event.source]}</Badge>
-        {event.encodingId && <Badge tone="neutral">{event.encodingId}</Badge>}
-        {event.occurrences > 1 && <Badge tone="accent">×{event.occurrences}</Badge>}
-        <span className="ml-auto shrink-0 font-mono text-xs text-foreground/50">
+        <span className="plate-marker">
+          {[
+            SOURCE_LABELS[event.source],
+            event.encodingId,
+            event.occurrences > 1 ? `×${event.occurrences}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
+        <span className="ml-auto shrink-0 font-mono text-xs tabular-nums text-foreground/60">
           {formatTime(event.lastSeenAt)}
         </span>
       </div>
@@ -80,7 +84,7 @@ function LogRow({ event }: { event: ConversionLogEvent }) {
           {event.samples.map((sample) => (
             <code
               key={sample}
-              className="rounded border border-border bg-surface-muted px-1.5 py-0.5 font-mono text-xs"
+              className="border border-border bg-surface-muted px-1.5 py-0.5 font-mono text-xs"
             >
               {sample}
             </code>
@@ -88,7 +92,7 @@ function LogRow({ event }: { event: ConversionLogEvent }) {
         </div>
       )}
 
-      <p className="font-mono text-[11px] text-foreground/40">{event.code}</p>
+      <p className="font-mono text-[11px] text-foreground/60">{event.code}</p>
     </li>
   );
 }
@@ -101,34 +105,48 @@ export function ConversionLogPanel({ className }: { className?: string }) {
   return (
     <section
       aria-labelledby="conversion-log-heading"
-      className={cn("flex flex-col rounded-lg border border-border bg-surface", className)}
+      className={cn("sheet flex flex-col", className)}
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <ScrollText className="h-4 w-4 shrink-0 text-foreground/60" aria-hidden />
-        <h2 id="conversion-log-heading" className="text-sm font-semibold">
-          Conversion log
-        </h2>
-        {summary.errors > 0 && <Badge tone="danger">{summary.errors} error{summary.errors === 1 ? "" : "s"}</Badge>}
-        {summary.warnings > 0 && (
-          <Badge tone="warning">
-            {summary.warnings} warning{summary.warnings === 1 ? "" : "s"}
-          </Badge>
-        )}
-        {events.length === 0 && <Badge tone="success">All clear</Badge>}
+      <div className="sheet-band">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <ScrollText className="h-4 w-4 shrink-0 text-foreground/60" aria-hidden />
+          <h2 id="conversion-log-heading" className="text-sm font-semibold">
+            Conversion log
+          </h2>
+          {/* Counts the session actually recorded — ledger colours only when
+              there is something to report. */}
+          <span className="font-mono text-xs tabular-nums">
+            {events.length === 0 ? (
+              <span className="text-success">All clear</span>
+            ) : (
+              <>
+                {summary.errors > 0 && (
+                  <span className="text-danger">
+                    {summary.errors} error{summary.errors === 1 ? "" : "s"}
+                  </span>
+                )}
+                {summary.errors > 0 && summary.warnings > 0 && (
+                  <span className="text-foreground/50"> · </span>
+                )}
+                {summary.warnings > 0 && (
+                  <span className="text-warning">
+                    {summary.warnings} warning{summary.warnings === 1 ? "" : "s"}
+                  </span>
+                )}
+              </>
+            )}
+          </span>
+        </div>
 
-        <div className="ml-auto flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
+        <div className="flex items-center gap-4">
+          <MicroButton
             onClick={clear}
             disabled={events.length === 0}
-            leftIcon={<Trash2 className="h-4 w-4" aria-hidden />}
+            icon={<Trash2 className="h-3.5 w-3.5" aria-hidden />}
           >
             Clear
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
+          </MicroButton>
+          <MicroButton
             onClick={() => setIsOpen((open) => !open)}
             aria-expanded={isOpen}
             aria-controls="conversion-log-body"
@@ -139,9 +157,9 @@ export function ConversionLogPanel({ className }: { className?: string }) {
               transition={reducedMotion ? { duration: 0 } : springs.snappy}
               className="inline-flex"
             >
-              <ChevronDown className="h-4 w-4" aria-hidden />
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden />
             </motion.span>
-          </Button>
+          </MicroButton>
         </div>
       </div>
 
@@ -161,7 +179,7 @@ export function ConversionLogPanel({ className }: { className?: string }) {
             className="overflow-hidden"
           >
             {events.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-foreground/50">
+              <p className="px-4 py-5 text-sm text-foreground/70">
                 Nothing has failed yet this session. Any conversion error, unreadable file, or Bengali
                 letter without a mapping rule will be listed here.
               </p>
@@ -175,7 +193,7 @@ export function ConversionLogPanel({ className }: { className?: string }) {
                     {summary.unmappedSamples.map((sample) => (
                       <code
                         key={sample}
-                        className="rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-xs"
+                        className="border border-border bg-surface px-1.5 py-0.5 font-mono text-xs"
                       >
                         {sample}
                       </code>

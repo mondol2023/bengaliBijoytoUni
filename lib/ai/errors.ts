@@ -1,3 +1,4 @@
+import { AppErrors, type AppError } from "../errors/types";
 import type { ProviderId } from "./types";
 
 /**
@@ -78,11 +79,11 @@ export const ProviderErrors = {
    * which an admin fixes by adding a key. This one means "no provider may be
    * called here at all", which adding a key must never fix.
    */
-  disabled(): ProviderError {
+  disabled(feature = "AI resolution"): ProviderError {
     return {
       code: "provider_disabled",
       provider: null,
-      message: "AI resolution is disabled on this deployment.",
+      message: `${feature} is disabled on this deployment.`,
     };
   },
   notRegistered(id: string): ProviderError {
@@ -177,4 +178,33 @@ export function providerErrorForHttpStatus(provider: ProviderId, status: number,
   if (status >= 500) return ProviderErrors.unavailable(provider, debug);
   if (status === 400) return ProviderErrors.contentRejected(provider, debug);
   return ProviderErrors.unknown(provider, debug);
+}
+
+/** Maps a Phase 5 `ProviderError` to the app-wide safe error model (§19) — never a generic 500 where a more precise status exists, never `debug`/API-key material leaking into the response. */
+export function providerErrorToAppError(error: ProviderError): AppError {
+  switch (error.code) {
+    case "provider_rate_limited":
+      return AppErrors.rateLimit(error.message, { details: { retryAfterSeconds: error.retryAfterSeconds ?? 60 } });
+    case "provider_not_registered":
+    case "provider_content_rejected":
+      return AppErrors.validation(error.message);
+    // 404, not 500: the deployment-wide switch being off is a deliberate
+    // configuration, not a fault, and the endpoint genuinely offers nothing
+    // here. It also keeps a disabled deployment from confirming which
+    // providers exist, matching the check's placement in `registry.ts`.
+    case "provider_disabled":
+      return AppErrors.notFound(error.message);
+    // 429 with the other throttles: a caller who waits gets served, which is
+    // what a rate-limit status means and what the UI already handles.
+    case "provider_budget_exhausted":
+      return AppErrors.rateLimit(error.message, { details: { retryAfterSeconds: 3_600 } });
+    case "provider_budget_unavailable":
+    case "provider_not_configured":
+    case "provider_authentication_failed":
+    case "provider_timeout":
+    case "provider_unavailable":
+    case "provider_invalid_response":
+    case "provider_unknown_error":
+      return AppErrors.unknown(error.message, { debug: error.debug });
+  }
 }

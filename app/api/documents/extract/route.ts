@@ -7,7 +7,9 @@ import {
   detectEncoding,
   formatUnmappedDetails,
 } from "@/features/converter/engine/pipeline";
+import { convertRuns } from "@/features/converter/engine/fontRuns";
 import { extractDocumentText } from "@/features/documents/extract";
+import { assessConversionQuality } from "@/features/documents/quality";
 import { rejectOversizeFile, rejectOversizeRequest } from "@/features/documents/uploadGuard";
 import { validateUsage } from "@/features/usage/usageService";
 import { failResponder, logAppError } from "@/lib/errors/handlers";
@@ -138,7 +140,7 @@ export async function POST(request: NextRequest) {
     });
     return fail(extraction.error);
   }
-  const { text, fileType, pageCount, notes } = extraction.value;
+  const { text, fileType, pageCount, notes, runs, imageTextPages } = extraction.value;
 
   const usageResult = validateUsage(text, tier, overrideMaxChars);
   if (!usageResult.ok) {
@@ -154,10 +156,15 @@ export async function POST(request: NextRequest) {
     return fail(usageResult.error);
   }
 
-  const detection = detectEncoding(text);
-  const resolvedEncodingId = encodingChoice === AUTO_DETECT ? detection.encodingId : encodingChoice;
+  // A PDF or DOCX arrives as font-tagged runs, so only the text set in legacy
+  // Bengali fonts is converted and English (case citations, quoted orders)
+  // comes through untouched. Formats without font information keep the
+  // single-encoding path.
+  const fontAware = runs && runs.length > 0;
+  const detection = fontAware ? undefined : detectEncoding(text);
+  const resolvedEncodingId = encodingChoice === AUTO_DETECT ? detection?.encodingId : encodingChoice;
 
-  if (!resolvedEncodingId || !getEncoding(resolvedEncodingId)) {
+  if (!fontAware && (!resolvedEncodingId || !getEncoding(resolvedEncodingId))) {
     const error = AppErrors.validation("Could not determine a source encoding for this document.", {
       details: { field: "encodingId" },
     });
@@ -173,19 +180,11 @@ export async function POST(request: NextRequest) {
     return fail(error);
   }
 
-  if (systemConfig.enabledEncodings && !systemConfig.enabledEncodings.includes(resolvedEncodingId)) {
-    return fail(
-      AppErrors.validation("This encoding has been disabled by an administrator.", {
-        details: { field: "encodingId" },
-      }),
-    );
-  }
-
-  const conversion = convertDocument({
-    extractedText: text,
-    encodingId: resolvedEncodingId,
-    fileName: file.name,
-  });
+  const runsResult = fontAware
+    ? convertRuns(runs, { encodingOverride: encodingChoice === AUTO_DETECT ? undefined : encodingChoice })
+    : undefined;
+  const conversion =
+    runsResult ?? convertDocument({ extractedText: text, encodingId: resolvedEncodingId!, fileName: file.name });
   if (!conversion.ok) {
     await capture({
       userId: user?.uid ?? null,
@@ -193,12 +192,36 @@ export async function POST(request: NextRequest) {
       severity: "error",
       code: conversion.error.code,
       message: conversion.error.message,
-      encodingId: resolvedEncodingId,
+      encodingId: resolvedEncodingId ?? null,
       fileName: file.name,
       fileType,
     });
     return fail(conversion.error);
   }
+
+  const runsOutput = runsResult?.ok ? runsResult.value : undefined;
+  const encodingsUsed = runsOutput ? Object.keys(runsOutput.convertedChars) : [conversion.value.encodingId];
+  if (systemConfig.enabledEncodings && encodingsUsed.some((id) => !systemConfig.enabledEncodings!.includes(id))) {
+    return fail(
+      AppErrors.validation("This encoding has been disabled by an administrator.", {
+        details: { field: "encodingId" },
+      }),
+    );
+  }
+  const detectionConfidence = runsOutput?.confidence ?? detection?.confidence ?? 0;
+  // With an explicit encoding there was no detection; score the table the
+  // user picked against the text instead, so the quality figure still says
+  // how much of the document that table could read.
+  const mappingConfidence =
+    runsOutput || detection
+      ? detectionConfidence
+      : (detectEncoding(text).scores.find((score) => score.encodingId === conversion.value.encodingId)?.confidence ?? 0);
+  // Already-Unicode text had nothing to map, which is not a mapping failure.
+  const quality = assessConversionQuality({
+    confidence: conversion.value.validation.alreadyUnicode ? 1 : mappingConfidence,
+    pageCount,
+    imageTextPages,
+  });
 
   // A converted-but-imperfect document is the failure mode worth collecting
   // most: it returns 200, the user sees Bengali, and only the unmapped
@@ -304,7 +327,9 @@ export async function POST(request: NextRequest) {
     pageCount: pageCount ?? null,
     notes: notes ?? null,
     encodingId: conversion.value.encodingId,
-    detectionConfidence: detection.confidence,
+    detectionConfidence,
+    quality,
+    imageTextPages: imageTextPages ?? [],
     unicodeText: conversion.value.unicodeText,
     validation: conversion.value.validation,
     usage: usageResult.usage,

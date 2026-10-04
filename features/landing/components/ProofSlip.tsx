@@ -7,6 +7,7 @@ import { listEncodings } from "@/features/converter/encodings/registry";
 import { SAMPLE_TEXT } from "@/features/converter/sampleText";
 import { motionTokens } from "@/lib/motion/tokens";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { ReadoutStrip } from "@/components/ui/ReadoutStrip";
 import { useSpecimen } from "../SpecimenProvider";
 
 const CHOICES = [
@@ -90,7 +91,7 @@ export function ProofSlip() {
           <button
             type="button"
             onClick={() => setDraft("")}
-            className="rounded-sm font-mono text-[0.7rem] uppercase tracking-[0.12em] text-foreground/70 underline decoration-border underline-offset-4 transition-colors hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="micro-control py-0"
           >
             Clear
           </button>
@@ -98,7 +99,7 @@ export function ProofSlip() {
           <button
             type="button"
             onClick={() => setDraft(SAMPLE_TEXT.sutonny)}
-            className="rounded-sm font-mono text-[0.7rem] uppercase tracking-[0.12em] text-foreground/70 underline decoration-border underline-offset-4 transition-colors hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="micro-control py-0"
           >
             Try SutonnyMJ
           </button>
@@ -121,19 +122,22 @@ export function ProofSlip() {
         </AnimatePresence>
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border px-4 py-3 sm:grid-cols-4">
-        <ReadoutCell label="Encoding" value={reading?.encodingName ?? "—"} />
-        <ReadoutCell
-          label={reading?.detected ? "Detected" : "Chosen"}
-          value={reading ? percent(reading.confidence) : "—"}
-        />
-        <ReadoutCell label="Characters" value={reading ? String(reading.charCount) : "—"} />
-        <ReadoutCell
-          label="Unmapped"
-          value={String(unmapped.length)}
-          tone={unmapped.length > 0 ? "warning" : "ok"}
-        />
-      </dl>
+      <ReadoutStrip
+        className="border-t border-border"
+        readouts={[
+          { label: "Encoding", value: reading?.encodingName ?? "—" },
+          {
+            label: reading?.detected ? "Detected" : "Chosen",
+            value: reading ? percent(reading.confidence) : "—",
+          },
+          { label: "Characters", value: reading ? String(reading.charCount) : "—" },
+          {
+            label: "Unmapped",
+            value: String(unmapped.length),
+            tone: unmapped.length > 0 ? "warning" : "ok",
+          },
+        ]}
+      />
 
       <AnimatePresence initial={false}>
         {unmapped.length > 0 ? (
@@ -154,29 +158,6 @@ export function ProofSlip() {
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </div>
-  );
-}
-
-function ReadoutCell({
-  label,
-  value,
-  tone = "ok",
-}: {
-  label: string;
-  value: string;
-  tone?: "ok" | "warning";
-}) {
-  return (
-    <div>
-      <dt className="plate-marker">{label}</dt>
-      <dd
-        className={`mt-0.5 font-mono text-sm tabular-nums ${
-          tone === "warning" ? "text-warning" : "text-foreground"
-        }`}
-      >
-        {value}
-      </dd>
     </div>
   );
 }

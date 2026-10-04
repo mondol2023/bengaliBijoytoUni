@@ -1,6 +1,5 @@
 "use client";
 
-import { Badge } from "@/components/ui/Badge";
 import { Select, type SelectOption } from "@/components/ui/Select";
 import { TIERS } from "@/features/usage/tierConfig";
 import type { TierId } from "@/types/domain";
@@ -32,19 +31,19 @@ export function TierSelector({
   if (locked) {
     const current = TIERS[tier];
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-foreground/70">Tier</span>
-        <Badge tone="accent">{current.label}</Badge>
-        {caption && <span className="text-xs text-foreground/50">{caption}</span>}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="plate-marker">Limit</span>
+        <span className="font-mono text-sm tabular-nums">
+          {current.label} · {current.maxNonWhitespaceChars.toLocaleString()} chars
+        </span>
+        {caption && <span className="text-xs text-foreground/60">{caption}</span>}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <label htmlFor="tier-select" className="text-sm font-medium text-foreground/70">
-        Tier
-      </label>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <span className="plate-marker">Limit</span>
       <Select
         value={tier}
         onValueChange={(value) => onChange(value as TierId)}
@@ -52,7 +51,7 @@ export function TierSelector({
         ariaLabel="Usage tier"
         className="min-w-56"
       />
-      {caption && <span className="text-xs text-foreground/50">{caption}</span>}
+      {caption && <span className="text-xs text-foreground/60">{caption}</span>}
     </div>
   );
 }

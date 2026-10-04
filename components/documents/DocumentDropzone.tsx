@@ -51,8 +51,10 @@ export function DocumentDropzone({
       <label
         htmlFor={inputId}
         className={cn(
-          "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 text-center transition-colors",
-          disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+          // A square galley, ruled in keyline like every other sheet; the
+          // terracotta edge and wash appear only while a file is over it.
+          "flex min-h-44 flex-col items-center justify-center gap-2 border p-8 text-center transition-colors",
+          disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-surface",
           isDragging ? "border-accent bg-accent-muted" : "border-border bg-surface-muted",
         )}
       >
@@ -62,11 +64,13 @@ export function DocumentDropzone({
           className="flex flex-col items-center gap-2"
         >
           <FileUp className="h-8 w-8 text-accent" aria-hidden />
-          <p className="text-sm font-medium">
-            Drop a file here, or <span className="text-accent underline">browse</span>
+          <p className="text-base font-medium">
+            Drop a file here, or{" "}
+            <span className="text-accent underline decoration-1 underline-offset-4">choose one</span>
           </p>
-          <p className="text-xs text-foreground/60">
-            {ACCEPTED_FILE_EXTENSIONS.join(", ")} · up to {MAX_UPLOAD_MB}MB
+          <p className="plate-marker">
+            {ACCEPTED_FILE_EXTENSIONS.map((ext) => ext.replace(".", "")).join(" · ")} · up to{" "}
+            {MAX_UPLOAD_MB} MB
           </p>
         </motion.div>
         <input
@@ -81,11 +85,11 @@ export function DocumentDropzone({
       </label>
 
       {file && (
-        <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm">
+        <div className="flex items-center justify-between gap-2 border border-t-0 border-border bg-surface px-3 py-1.5 text-sm">
           <span className="flex min-w-0 items-center gap-2">
             <FileText className="h-4 w-4 shrink-0 text-foreground/60" aria-hidden />
             <span className="truncate">{file.name}</span>
-            <span className="shrink-0 text-foreground/50">{formatBytes(file.size)}</span>
+            <span className="shrink-0 font-mono text-xs tabular-nums text-foreground/60">{formatBytes(file.size)}</span>
           </span>
           <Button
             variant="ghost"

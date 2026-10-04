@@ -1,28 +1,18 @@
 /**
- * Deterministic low-poly triangulation for the site-wide "foundry ground" —
- * the paper's own texture, not a decorative layer laid on top of it. Every
- * facet is a sliver of `--foreground` over `--background` at 2-9% opacity,
- * never a new hue, so it reads as grain in the stock the specimens are
- * printed on. Seeded with a fixed integer (no `Math.random`, no `Date.now`)
- * so the mesh is byte-identical on the server render and the client render —
- * no hydration mismatch, no layout shift.
+ * Deterministic low-poly tiles for the site-wide "foundry ground" — the
+ * paper's own faceted texture.
+ *
+ * Each tile is periodic in both directions (the grid's last row and column
+ * are its first, shifted by one tile), so it repeats without a seam and the
+ * ground can travel with the scroll for as long as a page is. A tile is
+ * returned as an SVG data URI used as a CSS *mask*: the facets are alpha
+ * only, and the colour comes from the layer's `background-color`, which is a
+ * theme token — so the same tile is ink-on-paper in light mode and
+ * paper-on-ink in dark mode without a second asset.
+ *
+ * Seeded with fixed integers (no `Math.random`, no `Date.now`), so server and
+ * client produce byte-identical markup — no hydration mismatch.
  */
-
-export interface GroundTriangle {
-  /** "x1,y1 x2,y2 x3,y3" — ready for a `<polygon points>` attribute. */
-  points: string;
-  opacity: number;
-}
-
-export interface GroundMesh {
-  width: number;
-  height: number;
-  /** Overscan beyond the design canvas so the ambient drift never reveals an edge. */
-  margin: number;
-  triangles: GroundTriangle[];
-}
-
-const SEED = 0x9e3779b9;
 
 /** mulberry32 — small, fast, and deterministic for a given seed. */
 function mulberry32(seed: number): () => number {
@@ -36,80 +26,165 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-const WIDTH = 1600;
-const HEIGHT = 1000;
-const MARGIN = 70;
-const COLS = 15;
-const ROWS = 9;
-/** Fraction of a cell's own size a corner may wander — organic facets, not a diamond grid. */
-const JITTER = 0.34;
-const OPACITY_MIN = 0.018;
-const OPACITY_MAX = 0.085;
+/**
+ * Escapes only what a data URI inside `url("…")` cannot carry raw. The SVG
+ * uses single quotes throughout, so this stays far smaller than
+ * `encodeURIComponent` — the masks ride inline on every page.
+ */
+function escapeSvg(svg: string): string {
+  return svg.replace(/%/g, "%25").replace(/#/g, "%23").replace(/</g, "%3C").replace(/>/g, "%3E");
+}
 
 interface Point {
   x: number;
   y: number;
 }
 
-function buildGroundMesh(): GroundMesh {
-  const random = mulberry32(SEED);
-  const spanX = WIDTH + MARGIN * 2;
-  const spanY = HEIGHT + MARGIN * 2;
-  const cellW = spanX / COLS;
-  const cellH = spanY / ROWS;
+interface TileSpec {
+  seed: number;
+  width: number;
+  height: number;
+  cols: number;
+  rows: number;
+  /** Fraction of a cell's own size a corner may wander — organic facets, not a diamond grid. */
+  jitter: number;
+  /**
+   * The inks this lattice is printed in. Each facet goes to at most one of
+   * them — a facet's chance of each is its `density` — and the rest stay
+   * open paper. Inks share one lattice so their facets interlock instead of
+   * overlapping.
+   */
+  inks: { density: number; opacityMin: number; opacityMax: number }[];
+  /** Alpha of the hairline crease on every edge, drawn into the first ink; 0 draws none. */
+  crease: number;
+}
 
-  const grid: Point[][] = [];
-  for (let row = 0; row <= ROWS; row++) {
+export interface GroundTile {
+  width: number;
+  height: number;
+  /** `url("data:image/svg+xml,…")`, ready for `mask-image`. */
+  mask: string;
+}
+
+/**
+ * Builds one periodic tile. Facets that straddle the tile's edge are drawn
+ * again, shifted by a tile, so the part that falls off one side reappears on
+ * the other — that is what makes the repeat seamless.
+ */
+function buildTiles(spec: TileSpec): GroundTile[] {
+  const random = mulberry32(spec.seed);
+  const { width: W, height: H, cols, rows } = spec;
+  const cellW = W / cols;
+  const cellH = H / rows;
+
+  // Jitter only the interior lattice; the wrap row/column copy row/column 0.
+  const base: Point[][] = [];
+  for (let row = 0; row < rows; row++) {
     const line: Point[] = [];
-    for (let col = 0; col <= COLS; col++) {
-      const baseX = -MARGIN + col * cellW;
-      const baseY = -MARGIN + row * cellH;
+    for (let col = 0; col < cols; col++) {
       line.push({
-        x: baseX + (random() - 0.5) * 2 * JITTER * cellW,
-        y: baseY + (random() - 0.5) * 2 * JITTER * cellH,
+        x: col * cellW + (random() - 0.5) * 2 * spec.jitter * cellW,
+        y: row * cellH + (random() - 0.5) * 2 * spec.jitter * cellH,
       });
     }
-    grid.push(line);
+    base.push(line);
   }
-
-  const format = (p: Point) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
-
-  // Gently darkens (or, in dark mode, lightens) toward the lower right, like
-  // a single soft light source — plus per-facet jitter so triangles catch it
-  // unevenly instead of banding smoothly.
-  const facetOpacity = (cx: number, cy: number) => {
-    const nx = (cx + MARGIN) / spanX;
-    const ny = (cy + MARGIN) / spanY;
-    const lightBias = nx * 0.35 + ny * 0.45;
-    const sparkle = (random() - 0.5) * 0.7;
-    const t = Math.min(1, Math.max(0, lightBias + sparkle * 0.5));
-    return Number((OPACITY_MIN + t * (OPACITY_MAX - OPACITY_MIN)).toFixed(3));
+  const at = (row: number, col: number): Point => {
+    const p = base[row % rows][col % cols];
+    return { x: p.x + (col >= cols ? W : 0), y: p.y + (row >= rows ? H : 0) };
   };
 
-  const triangles: GroundTriangle[] = [];
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLS; col++) {
-      const tl = grid[row][col];
-      const tr = grid[row][col + 1];
-      const bl = grid[row + 1][col];
-      const br = grid[row + 1][col + 1];
-      // Alternate which diagonal splits the quad so the mesh doesn't read as
-      // a uniform diamond lattice.
-      const splitTlBr = random() > 0.5;
-      const halves = splitTlBr ? [[tl, tr, br], [tl, br, bl]] : [[tl, tr, bl], [tr, br, bl]];
+  const shapes: string[][] = spec.inks.map(() => []);
+  const draw = (ink: number, tri: Point[], alpha: number, crease: number) => {
+    const xs = tri.map((p) => p.x);
+    const ys = tri.map((p) => p.y);
+    for (const dx of [-W, 0, W]) {
+      for (const dy of [-H, 0, H]) {
+        // Only the copies that actually overlap the tile.
+        if (Math.max(...xs) + dx < 0 || Math.min(...xs) + dx > W) continue;
+        if (Math.max(...ys) + dy < 0 || Math.min(...ys) + dy > H) continue;
+        const points = tri.map((p) => `${Math.round(p.x + dx)},${Math.round(p.y + dy)}`).join(" ");
+        shapes[ink].push(
+          `<polygon points='${points}' fill-opacity='${alpha.toFixed(3)}'` +
+            (crease > 0 ? ` stroke-opacity='${crease}'` : " stroke='none'") +
+            "/>",
+        );
+      }
+    }
+  };
 
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const tl = at(row, col);
+      const tr = at(row, col + 1);
+      const bl = at(row + 1, col);
+      const br = at(row + 1, col + 1);
+      // Alternate the diagonal so the mesh doesn't read as a diamond lattice.
+      const halves = random() > 0.5 ? [[tl, tr, br], [tl, br, bl]] : [[tl, tr, bl], [tr, br, bl]];
       for (const tri of halves) {
-        const cx = (tri[0].x + tri[1].x + tri[2].x) / 3;
-        const cy = (tri[0].y + tri[1].y + tri[2].y) / 3;
-        triangles.push({
-          points: tri.map(format).join(" "),
-          opacity: facetOpacity(cx, cy),
-        });
+        // Pick at most one ink for this facet, by cumulative density.
+        const roll = random();
+        const t = random();
+        let ink = -1;
+        let floor = 0;
+        for (let i = 0; i < spec.inks.length; i++) {
+          floor += spec.inks[i].density;
+          if (roll < floor) {
+            ink = i;
+            break;
+          }
+        }
+        if (ink >= 0) {
+          const { opacityMin, opacityMax } = spec.inks[ink];
+          draw(ink, tri, opacityMin + t * (opacityMax - opacityMin), ink === 0 ? spec.crease : 0);
+        } else if (spec.crease > 0) {
+          // Open paper still carries its crease.
+          draw(0, tri, 0, spec.crease);
+        }
       }
     }
   }
 
-  return { width: WIDTH, height: HEIGHT, margin: MARGIN, triangles };
+  return shapes.map((inkShapes) => {
+    const svg =
+      `<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}' viewBox='0 0 ${W} ${H}'>` +
+      `<g fill='black' stroke='black' stroke-width='1'>${inkShapes.join("")}</g></svg>`;
+    return { width: W, height: H, mask: `url("data:image/svg+xml,${escapeSvg(svg)}")` };
+  });
 }
 
-export const groundMesh: GroundMesh = buildGroundMesh();
+/**
+ * The far layer: the full faceted sheet in ink, a hairline crease on every
+ * edge. It moves slowest, so it reads as the paper itself.
+ */
+export const [farInkTile] = buildTiles({
+  seed: 0x9e3779b9,
+  width: 1600,
+  height: 1000,
+  cols: 15,
+  rows: 9,
+  jitter: 0.34,
+  inks: [{ density: 1, opacityMin: 0.02, opacityMax: 0.085 }],
+  // Every interior edge is drawn by both facets that share it, so this doubles.
+  crease: 0.05,
+});
+
+/**
+ * The near layer: larger, sparser facets that travel faster than the sheet
+ * beneath them — the parallax that makes the ground read as depth rather
+ * than wallpaper. Most of its facets are ink; a few carry the terracotta
+ * accent, never enough to outweigh the ink.
+ */
+export const [nearInkTile, nearAccentTile] = buildTiles({
+  seed: 0x85ebca6b,
+  width: 2000,
+  height: 1400,
+  cols: 8,
+  rows: 6,
+  jitter: 0.3,
+  inks: [
+    { density: 0.3, opacityMin: 0.025, opacityMax: 0.06 },
+    { density: 0.14, opacityMin: 0.045, opacityMax: 0.1 },
+  ],
+  crease: 0,
+});

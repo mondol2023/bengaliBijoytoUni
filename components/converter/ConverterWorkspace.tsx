@@ -3,7 +3,9 @@
 import { useId, useMemo } from "react";
 import { motion } from "motion/react";
 import { Sparkles, Trash2, Download, AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { MicroButton } from "@/components/ui/MicroButton";
+import { ReadoutStrip } from "@/components/ui/ReadoutStrip";
+import { ToolHead } from "@/components/layout/ToolHead";
 import { PrivacyNote } from "@/components/privacy/PrivacyNote";
 import { CONVERTER_NOTE } from "@/lib/privacy/disclosure";
 import { EncodingSelector } from "./EncodingSelector";
@@ -21,6 +23,7 @@ import { useIssueLog } from "@/hooks/useIssueLog";
 import { useConversionFailureReporter } from "@/hooks/useConversionFailureReporter";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { SAMPLE_TEXT } from "@/features/converter/sampleText";
+import { AUTO_DETECT } from "@/features/converter/constants";
 import { conversionUsageRecord } from "@/features/usage/conversionUsage";
 import { downloadTextFile } from "@/lib/utils/download";
 import { motionTokens, springs, staggerChildren, staggerDelayChildren } from "@/lib/motion/tokens";
@@ -122,6 +125,15 @@ export function ConverterWorkspace() {
     }
   }
 
+  const resolvedEncoding = encodings.find((encoding) => encoding.id === resolvedEncodingId);
+  const unmappedCount = output?.validation?.unmappedSequences.length ?? 0;
+  const hasInput = inputText.trim().length > 0;
+  const statusMarker = !hasInput
+    ? "Waiting for text"
+    : resolvedEncoding
+      ? `${resolvedEncoding.name} · ${encodingChoice === AUTO_DETECT ? "detected" : "chosen"}`
+      : "No confident match";
+
   return (
     <motion.main
       id="main"
@@ -129,19 +141,20 @@ export function ConverterWorkspace() {
       variants={containerVariants}
       initial={reducedMotion ? false : "hidden"}
       animate="visible"
-      className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 outline-none sm:px-6 sm:py-12"
+      className="tool-plate flex flex-col outline-none"
     >
-      <motion.div variants={itemVariants} className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Text Converter</h1>
-        <p className="max-w-2xl text-sm text-foreground/70 sm:text-base">
-          Paste legacy Bijoy or SutonnyMJ Bengali text on the left. It converts to standards-compliant
-          Unicode on the right as you type.
-        </p>
+      <motion.div variants={itemVariants}>
+        <ToolHead
+          title="Text converter"
+          marker={statusMarker}
+          standfirst="Paste Bijoy or SutonnyMJ text that shows up as gibberish. It is re-set as standard Unicode as you type, and anything without a mapping rule is counted rather than guessed."
+        />
       </motion.div>
 
+      {/* Settings ride on a single ruled row, not inside a box. */}
       <motion.div
         variants={itemVariants}
-        className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between"
+        className="mt-6 flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between"
       >
         <EncodingSelector
           encodings={encodings}
@@ -153,127 +166,140 @@ export function ConverterWorkspace() {
         <TierSelector tier={tier} onChange={setTier} />
       </motion.div>
 
-      <motion.div variants={itemVariants}>
+      <motion.div variants={itemVariants} className="mt-4">
         <UsageMeter usage={usage} />
       </motion.div>
 
-      <motion.div variants={itemVariants} className="grid gap-4 lg:grid-cols-2">
-        {/* Legacy input panel */}
-        <div className="flex flex-col rounded-lg border border-border bg-surface">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <label htmlFor={inputId} className="text-sm font-semibold">
-              Legacy input
-            </label>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={loadSample} leftIcon={<Sparkles className="h-4 w-4" aria-hidden />}>
-                Load sample
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clear}
-                disabled={inputText.length === 0}
-                leftIcon={<Trash2 className="h-4 w-4" aria-hidden />}
-              >
-                Clear
-              </Button>
+      {/* One pulled sheet split by a hairline: the legacy galley on the left,
+          the proof on the right, the read-out row across both. */}
+      <motion.section variants={itemVariants} aria-label="Conversion" className="sheet mt-6">
+        <div className="grid lg:grid-cols-2">
+          <div className="flex min-w-0 flex-col">
+            <div className="sheet-band">
+              <label htmlFor={inputId} className="plate-marker">
+                Legacy text
+              </label>
+              <div className="flex items-center gap-4">
+                <MicroButton onClick={loadSample} icon={<Sparkles className="h-3.5 w-3.5" aria-hidden />}>
+                  Load sample
+                </MicroButton>
+                <MicroButton
+                  onClick={clear}
+                  disabled={inputText.length === 0}
+                  icon={<Trash2 className="h-3.5 w-3.5" aria-hidden />}
+                >
+                  Clear
+                </MicroButton>
+              </div>
+            </div>
+            <textarea
+              id={inputId}
+              value={inputText}
+              onChange={(event) => setInputText(event.target.value)}
+              placeholder="Paste your broken text here…"
+              spellCheck={false}
+              className="min-h-64 flex-1 resize-y bg-transparent p-4 font-mono text-sm leading-relaxed outline-none transition-colors placeholder:text-foreground/60 focus-visible:bg-surface-muted"
+            />
+            <div className="sheet-foot">
+              <span className="plate-marker">{wordCount.toLocaleString()} words</span>
+              <span className="plate-marker">{usage.used.toLocaleString()} characters</span>
             </div>
           </div>
-          <textarea
-            id={inputId}
-            value={inputText}
-            onChange={(event) => setInputText(event.target.value)}
-            placeholder="Paste or type legacy-encoded Bengali text here…"
-            spellCheck={false}
-            className="min-h-64 flex-1 resize-y bg-transparent p-4 font-mono text-sm outline-none placeholder:text-foreground/40"
-          />
-          <div className="flex items-center justify-between border-t border-border px-4 py-2 text-xs text-foreground/60">
-            <span>{wordCount.toLocaleString()} words</span>
-            <span>{usage.used.toLocaleString()} non-whitespace chars</span>
-          </div>
-          {/* Under the input, not the output: this is the moment before
-              someone pastes, which is the only moment the line can change
-              what they paste. */}
-          <PrivacyNote note={CONVERTER_NOTE} className="border-t border-border px-4 py-3" />
-        </div>
 
-        {/* Unicode output panel */}
-        <div className="flex flex-col rounded-lg border border-border bg-surface">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            {/* Not a <label htmlFor>: the output is a <div>, which is not a
-                labelable element, so the association silently did nothing.
-                A plain heading referenced by aria-labelledby names the region
-                for assistive tech and stays visible for everyone else. */}
-            <h2 id={outputLabelId} className="text-sm font-semibold">
-              Unicode output
-            </h2>
-            <div className="flex items-center gap-2">
-              <CopyButton text={output?.unicodeText ?? ""} />
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={!output?.unicodeText}
-                onClick={() => downloadTextFile("converted.txt", output?.unicodeText ?? "")}
-                leftIcon={<Download className="h-4 w-4" aria-hidden />}
-              >
-                Download
-              </Button>
-              {user && (
-                <SaveToHistoryButton
-                  key={output?.unicodeText ?? ""}
-                  onSave={saveToHistory}
+          <div className="flex min-w-0 flex-col border-t border-border lg:border-l lg:border-t-0">
+            <div className="sheet-band">
+              {/* Not a <label htmlFor>: the output is a <div>, which is not a
+                  labelable element. A heading referenced by aria-labelledby
+                  names the region for assistive tech. */}
+              <h2 id={outputLabelId} className="plate-marker">
+                Unicode
+              </h2>
+              <div className="flex items-center gap-4">
+                {user && (
+                  <SaveToHistoryButton
+                    key={output?.unicodeText ?? ""}
+                    onSave={saveToHistory}
+                    disabled={!output?.unicodeText}
+                  />
+                )}
+                <MicroButton
                   disabled={!output?.unicodeText}
-                />
+                  onClick={() => downloadTextFile("converted.txt", output?.unicodeText ?? "")}
+                  icon={<Download className="h-3.5 w-3.5" aria-hidden />}
+                >
+                  Download
+                </MicroButton>
+                <CopyButton variant="primary" text={output?.unicodeText ?? ""} />
+              </div>
+            </div>
+            {/* A live region, not role="textbox": read-only output that
+                updates as you type. `lang` goes on the Bengali itself (inside
+                ConversionOutputText), not on the panel, which also holds
+                English placeholder and error copy. */}
+            <div
+              id={outputId}
+              role="region"
+              aria-labelledby={outputLabelId}
+              aria-live="polite"
+              className="min-h-64 flex-1 whitespace-pre-wrap break-words p-4 font-bengali text-xl leading-relaxed"
+            >
+              {isOverLimit ? (
+                <span className="font-sans text-sm text-danger">
+                  Over the {usage.tier} limit — shorten the text or choose a higher limit to see the
+                  converted output.
+                </span>
+              ) : error ? (
+                <span className="inline-flex items-start gap-2 font-sans text-sm text-danger">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  {error.message}
+                </span>
+              ) : output?.unicodeText ? (
+                <ConversionOutputText text={output.unicodeText} fallback={fallback} />
+              ) : (
+                <span className="font-sans text-sm text-foreground/60">Converted Bengali appears here.</span>
               )}
             </div>
-          </div>
-          {/* `role="textbox"` was wrong twice over: it promises an editable
-              field, and it was never focusable, so a screen-reader user could
-              not reach it in forms mode. This is read-only output that
-              updates as you type, so it is a live region instead — matching
-              what the landing page's proof slip already does. `lang="bn"`
-              lets a screen reader switch to a Bengali voice rather than
-              reading the conversion result with an English one. */}
-          <div
-            id={outputId}
-            role="region"
-            aria-labelledby={outputLabelId}
-            aria-live="polite"
-            className="font-bengali min-h-64 flex-1 whitespace-pre-wrap break-words p-4 text-base leading-relaxed"
-          >
-            {isOverLimit ? (
-              <span className="text-sm text-danger">
-                Input exceeds the {usage.tier} tier limit — reduce the input or switch tiers to see
-                converted output.
-              </span>
-            ) : error ? (
-              <span className="inline-flex items-start gap-2 text-sm text-danger">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                {error.message}
-              </span>
-            ) : output?.unicodeText ? (
-              // `lang` goes on the Bengali itself, not the panel: the panel
-              // also holds English placeholder/error copy, which a screen
-              // reader would then read with a Bengali voice. With the
-              // fallback pipeline off, `fallback` is null and this renders
-              // exactly the `<span lang="bn">` it always did.
-              <ConversionOutputText text={output.unicodeText} fallback={fallback} />
-            ) : (
-              <span className="text-sm text-foreground/40">Converted text will appear here…</span>
+            <ConversionWarnings validation={output?.validation ?? null} />
+            {fallback && resolvedEncodingId && (
+              <FallbackSummary fallback={fallback} encodingId={resolvedEncodingId} wordCount={wordCount} />
             )}
           </div>
-          <ConversionWarnings validation={output?.validation ?? null} />
-          {fallback && resolvedEncodingId && (
-            <FallbackSummary fallback={fallback} encodingId={resolvedEncodingId} wordCount={wordCount} />
-          )}
         </div>
+
+        <ReadoutStrip
+          className="border-t border-border"
+          readouts={[
+            { label: "Encoding", value: hasInput ? (resolvedEncoding?.name ?? "—") : "—" },
+            {
+              label: encodingChoice === AUTO_DETECT ? "Detected" : "Chosen",
+              value:
+                hasInput && resolvedEncoding
+                  ? encodingChoice === AUTO_DETECT
+                    ? `${Math.round(detectionConfidence * 100)}%`
+                    : "Manual"
+                  : "—",
+            },
+            { label: "Characters", value: usage.used.toLocaleString() },
+            {
+              label: "Unmapped",
+              value: hasInput ? String(unmappedCount) : "—",
+              tone: unmappedCount > 0 ? "warning" : "ok",
+            },
+          ]}
+        />
+      </motion.section>
+
+      {/* Directly under the input's sheet: the moment before someone pastes
+          is the only moment this line can change what they paste. */}
+      <motion.div variants={itemVariants}>
+        <PrivacyNote note={CONVERTER_NOTE} className="mt-3 max-w-[68ch]" />
       </motion.div>
 
-      <motion.div variants={itemVariants}>
+      <motion.div variants={itemVariants} className="mt-12">
         <ConversionLogPanel />
       </motion.div>
 
-      <motion.div variants={itemVariants}>
+      <motion.div variants={itemVariants} className="mt-6">
         <FeedbackForm
           encodingId={resolvedEncodingId ?? null}
           sampleInput={inputText || null}

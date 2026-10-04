@@ -14,14 +14,19 @@
  * remember it. `lib/ai/__tests__/callSites.test.ts` holds that property.
  */
 import { assertServerOnly } from "./assertServerOnly";
-import { isAiResolutionEnabled } from "./enabled";
+import { isAiResolutionEnabled, isAiTranscriptionEnabled } from "./enabled";
 
 assertServerOnly("lib/ai/registry.ts");
 
-import { type ConversionResolutionProvider, type ProviderId, isProviderId } from "./types";
+import {
+  type ConversionResolutionProvider,
+  type DocumentTranscriptionProvider,
+  type ProviderId,
+  isProviderId,
+} from "./types";
 import { type ProviderResult, providerOk, providerErr } from "./types";
 import { ProviderErrors } from "./errors";
-import { geminiProvider } from "./providers/gemini";
+import { geminiProvider, geminiTranscriptionProvider } from "./providers/gemini";
 import { openAiProvider } from "./providers/openai";
 
 const PROVIDERS: Record<ProviderId, ConversionResolutionProvider> = {
@@ -53,4 +58,16 @@ export function getResolutionProvider(id: string): ProviderResult<ConversionReso
     return providerErr(ProviderErrors.notRegistered(id));
   }
   return providerOk(PROVIDERS[id]);
+}
+
+/**
+ * The transcription provider, behind its own switch (`AI_TRANSCRIPTION_ENABLED`).
+ * Gemini only: it is the provider that reads a PDF natively, which is the
+ * point — pages drawn as images are exactly what the engine cannot read.
+ */
+export function getTranscriptionProvider(): ProviderResult<DocumentTranscriptionProvider> {
+  if (!isAiTranscriptionEnabled()) {
+    return providerErr(ProviderErrors.disabled("AI transcription"));
+  }
+  return providerOk(geminiTranscriptionProvider);
 }

@@ -8,32 +8,38 @@ import type { ComparisonInputMode, ComparisonSide } from "@/hooks/useComparisonS
 import type { UsageCheck } from "@/features/usage/usageService";
 import { cn } from "@/lib/utils/cn";
 
+/**
+ * One galley of the comparison sheet. The parent draws the frame; this half
+ * only owns its head rule, its field, and its foot band.
+ */
 export function ComparisonInputPanel({
   label,
   side,
   usage,
+  className,
 }: {
   label: string;
   side: ComparisonSide;
   usage: UsageCheck;
+  className?: string;
 }) {
   const textareaId = useId();
 
   return (
-    <div className="flex flex-col rounded-lg border border-border bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <label htmlFor={textareaId} className="text-sm font-semibold">
+    <div className={cn("flex min-w-0 flex-col", className)}>
+      <div className="sheet-band">
+        <label htmlFor={textareaId} className="plate-marker">
           {label}
         </label>
         <Tabs value={side.mode} onValueChange={(value) => side.setMode(value as ComparisonInputMode)}>
-          <TabsList>
+          <TabsList aria-label={`${label} input`}>
             <TabsTrigger value="text">Text</TabsTrigger>
             <TabsTrigger value="file">File</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
-      <div className="flex flex-1 flex-col gap-3 p-4">
+      <div className="flex flex-1 flex-col">
         {side.mode === "text" ? (
           <textarea
             id={textareaId}
@@ -41,19 +47,19 @@ export function ComparisonInputPanel({
             onChange={(event) => side.setText(event.target.value)}
             placeholder="Paste or type text here…"
             spellCheck={false}
-            className="min-h-48 flex-1 resize-y bg-transparent font-mono text-sm outline-none placeholder:text-foreground/40"
+            className="min-h-48 flex-1 resize-y bg-transparent p-4 font-mono text-sm leading-relaxed outline-none transition-colors placeholder:text-foreground/60 focus-visible:bg-surface-muted"
           />
         ) : (
-          <div className="flex flex-1 flex-col gap-3">
+          <div className="flex flex-1 flex-col gap-3 p-4">
             <DocumentDropzone file={side.file} onFileSelected={side.selectFile} disabled={side.isExtracting} />
             {side.isExtracting && (
-              <p className="flex items-center gap-2 text-sm text-foreground/60">
+              <p role="status" className="flex items-center gap-2 text-sm text-foreground/70">
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                 Extracting text…
               </p>
             )}
             {side.meta && !side.isExtracting && !side.error && (
-              <p className="text-xs text-foreground/60">
+              <p className="font-mono text-xs tabular-nums text-foreground/70">
                 {side.text.trim().length === 0
                   ? "No extractable text found in this file."
                   : `Extracted ${side.text.length.toLocaleString()} characters`}
@@ -64,20 +70,24 @@ export function ComparisonInputPanel({
         )}
 
         {side.error && (
-          <div className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <div role="alert" className="sheet-note bg-danger/10 text-danger">
+            <AlertCircle className="mt-1 h-4 w-4 shrink-0" aria-hidden />
             <span>{side.error.message}</span>
           </div>
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-border px-4 py-2 text-xs text-foreground/60">
-        <span>
-          {usage.used.toLocaleString()} / {usage.max.toLocaleString()} non-whitespace chars
+      <div className="sheet-foot">
+        <span className="plate-marker">
+          {usage.used.toLocaleString()} / {usage.max.toLocaleString()} characters
         </span>
-        <span className={cn(!usage.withinLimit && "font-semibold text-danger")}>
-          {usage.withinLimit ? `${usage.remaining.toLocaleString()} remaining` : "Over limit"}
-        </span>
+        {usage.withinLimit ? (
+          <span className="plate-marker">{usage.remaining.toLocaleString()} left</span>
+        ) : (
+          <span className="font-mono text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-danger">
+            Over limit
+          </span>
+        )}
       </div>
     </div>
   );

@@ -8,10 +8,13 @@ export function CopyButton({
   text,
   disabled,
   className,
+  variant = "secondary",
 }: {
   text: string;
   disabled?: boolean;
   className?: string;
+  /** `primary` on an output sheet, where taking the result is the point of the page. */
+  variant?: "primary" | "secondary";
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -27,7 +30,7 @@ export function CopyButton({
 
   return (
     <Button
-      variant="secondary"
+      variant={variant}
       size="sm"
       onClick={handleCopy}
       disabled={disabled || text.length === 0}

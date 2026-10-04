@@ -2,7 +2,6 @@
 
 import { Info } from "lucide-react";
 import { Select, type SelectOption } from "@/components/ui/Select";
-import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
 import type { EncodingDefinition } from "@/features/converter/encodings/types";
 import { AUTO_DETECT, type EncodingChoice } from "@/hooks/useConversion";
@@ -28,10 +27,10 @@ export function EncodingSelector({
   const resolvedEncoding = encodings.find((encoding) => encoding.id === resolvedEncodingId);
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <label htmlFor="encoding-select" className="text-sm font-medium text-foreground/70">
-        Source encoding
-      </label>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <span className="plate-marker">
+        Encoding
+      </span>
       <Select
         value={choice}
         onValueChange={onChange}
@@ -40,22 +39,20 @@ export function EncodingSelector({
         className="min-w-40"
       />
 
-      {choice === AUTO_DETECT &&
-        (resolvedEncoding ? (
-          <Badge tone="accent">
-            Detected {resolvedEncoding.name} ({Math.round(detectionConfidence * 100)}%)
-          </Badge>
-        ) : (
-          <Badge tone="neutral">No confident match yet</Badge>
-        ))}
+      {/* Detection is live engine state, so it reads in the mono readout
+          style — terracotta once something is detected, muted while waiting.
+          Nothing is shown before there is input to detect from. */}
+      {choice === AUTO_DETECT && resolvedEncoding && (
+        <span className="font-mono text-xs tabular-nums text-accent">
+          {resolvedEncoding.name} · {Math.round(detectionConfidence * 100)}%
+        </span>
+      )}
 
       {resolvedEncoding?.maturity === "experimental" && (
         <Tooltip content="This encoding's glyph mapping table is provisional starter data, not yet validated against real documents. Conversion accuracy may vary — please double-check important output.">
-          <span className="inline-flex cursor-help">
-            <Badge tone="warning">
-              <Info className="h-3 w-3" aria-hidden />
-              Experimental mapping
-            </Badge>
+          <span className="inline-flex cursor-help items-center gap-1 font-mono text-[0.7rem] uppercase tracking-[0.12em] text-warning">
+            <Info className="h-3 w-3" aria-hidden />
+            Experimental mapping
           </span>
         </Tooltip>
       )}

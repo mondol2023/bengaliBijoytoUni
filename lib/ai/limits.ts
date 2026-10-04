@@ -25,3 +25,19 @@ export const RESOLUTION_LIMITS = {
   /** Same shape as `resolveRateLimit`, but a review only writes to Firestore (no paid provider call), so a looser per-admin ceiling still blunts scripted abuse. */
   reviewRateLimit: { limit: 60, windowMs: 10 * 60_000 },
 } as const;
+
+/** Bounds for whole-document transcription (`lib/ai/transcribeDocument.ts`). */
+export const TRANSCRIPTION_LIMITS = {
+  /**
+   * A long judgment is ~20k words; Bengali costs several tokens a word. The
+   * provider cap for the default model is 65,536, so this is that cap — a
+   * transcription cut short is flagged `truncated` rather than silently short.
+   */
+  maxOutputTokens: 65_536,
+  /** Inside the route's `maxDuration` (120s), leaving room for extraction and the budget write. */
+  timeoutMs: 110_000,
+  /** Gemini's inline-data request ceiling is 20MB, and base64 grows a file by a third. */
+  maxInlineFileBytes: 14 * 1024 * 1024,
+  /** Per caller. A transcription is the most expensive call this app makes, and anonymous visitors can make it. */
+  rateLimit: { limit: 5, windowMs: 10 * 60_000 },
+} as const;

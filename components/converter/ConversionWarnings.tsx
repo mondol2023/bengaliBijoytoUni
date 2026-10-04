@@ -37,8 +37,8 @@ export function ConversionWarnings({ validation }: { validation: ValidationResul
           <div
             className={
               isNotice
-                ? "mx-4 mb-4 mt-1 flex items-start gap-2 rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-foreground/80"
-                : "mx-4 mb-4 mt-1 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning"
+                ? "sheet-note bg-surface-muted text-foreground/80"
+                : "sheet-note bg-warning/10 text-warning"
             }
           >
             {isNotice ? (
@@ -72,7 +72,7 @@ export function ConversionWarnings({ validation }: { validation: ValidationResul
                         {detail.contexts.map((context, index) => (
                           <span
                             key={`${detail.sequence}-${index}`}
-                            className="min-w-0 break-words rounded bg-warning/10 px-1.5 py-0.5 text-xs"
+                            className="min-w-0 break-words bg-warning/10 px-1.5 py-0.5 font-bengali text-sm"
                             lang="bn"
                           >
                             {context}

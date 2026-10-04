@@ -117,3 +117,36 @@ export interface ConversionResolutionProvider {
     options?: ResolutionOptions,
   ): Promise<ProviderResult<ConversionResolution>>;
 }
+
+/**
+ * Whole-document transcription: a provider reads the original file (or its
+ * extracted text) and returns the document in Unicode. Unlike a resolution,
+ * the output is never fed back into the engine or its tables — it is shown
+ * to the user beside the engine's own result, labelled as AI output.
+ */
+export interface DocumentTranscriptionRequest {
+  /** The original file, for formats the provider reads natively (PDF), so pages drawn as images are read too. */
+  readonly file?: { readonly mimeType: string; readonly data: Buffer };
+  /** Extracted text, for formats the provider cannot read (DOCX/DOC). */
+  readonly text?: string;
+  readonly fileName: string;
+}
+
+export interface DocumentTranscription {
+  readonly text: string;
+  /** The provider stopped at its output limit; the end of the document is missing. */
+  readonly truncated: boolean;
+  readonly provider: ProviderId;
+  readonly model: string;
+  readonly promptVersion: string;
+}
+
+export interface DocumentTranscriptionProvider {
+  readonly id: ProviderId;
+  readonly model: string;
+  isConfigured(): boolean;
+  transcribe(
+    request: DocumentTranscriptionRequest,
+    options?: { readonly timeoutMs?: number },
+  ): Promise<ProviderResult<DocumentTranscription>>;
+}

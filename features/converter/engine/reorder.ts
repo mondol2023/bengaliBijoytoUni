@@ -16,6 +16,13 @@ const VIRAMA_ONLY = /^্+$/u;
 const CLUSTER_CONTINUATION = /^্/u;
 
 /**
+ * A half form: one token carrying a consonant plus the hasant that joins it
+ * to the *next* token (alpha-ANSI's "Ø" => স্, "Ç" => ম্). The cluster runs
+ * on through whatever follows it, the mirror image of `CLUSTER_CONTINUATION`.
+ */
+const JOINS_NEXT = /[ক-হ]্$/u;
+
+/**
  * Finds where a reph belongs: immediately before the consonant cluster that
  * precedes it. Legacy text types the reph last, after that cluster has
  * already picked up its own vowel sign(s), so we skip back over any trailing
@@ -39,7 +46,11 @@ function rephInsertIndex(output: Token[]): number {
     at -= 1;
   }
   if (at > 0) at -= 1;
-  while (at > 0 && VIRAMA_ONLY.test(output[at - 1].unicode)) at -= 2;
+  while (at > 0) {
+    if (VIRAMA_ONLY.test(output[at - 1].unicode)) at -= 2;
+    else if (JOINS_NEXT.test(output[at - 1].unicode)) at -= 1;
+    else break;
+  }
   return Math.max(at, 0);
 }
 
@@ -115,15 +126,21 @@ export function reorderTokens(tokens: Token[]): Token[] {
     // emit any continuation tokens before releasing it. A standalone hasant
     // takes the consonant after it along too ("ি ক ্ ত" -> ক্তি), mirroring
     // how `rephInsertIndex` skips back over the same pairs.
+    // A half form ("স্") pulls the token after it in the same way.
     let next = i + 1;
-    while (next < tokens.length && CLUSTER_CONTINUATION.test(tokens[next].unicode)) {
-      if (VIRAMA_ONLY.test(tokens[next].unicode)) {
+    let last = token;
+    while (next < tokens.length) {
+      const candidate = tokens[next];
+      if (VIRAMA_ONLY.test(candidate.unicode)) {
         if (next + 1 >= tokens.length) break;
-        output.push(tokens[next], tokens[next + 1]);
+        output.push(candidate, tokens[next + 1]);
+        last = tokens[next + 1];
         next += 2;
         continue;
       }
-      output.push(tokens[next]);
+      if (!CLUSTER_CONTINUATION.test(candidate.unicode) && !JOINS_NEXT.test(last.unicode)) break;
+      output.push(candidate);
+      last = candidate;
       next += 1;
     }
     i = next - 1;

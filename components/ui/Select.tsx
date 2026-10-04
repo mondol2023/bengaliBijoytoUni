@@ -31,7 +31,7 @@ export function Select({
         aria-label={ariaLabel}
         className={cn(
           "inline-flex h-9 min-w-0 items-center justify-between gap-2 rounded-md border border-border bg-surface px-3",
-          "text-sm font-medium text-foreground shadow-sm outline-none transition-colors",
+          "text-sm font-medium text-foreground outline-none transition-colors",
           "hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-accent",
           "data-[placeholder]:text-foreground/50",
           className,

@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  AI_TRANSCRIPTION_NOTE,
   CONTEXT_WINDOW_DISCLOSED,
   CONVERTER_NOTE,
   DOCUMENTS_NOTE,
@@ -25,11 +26,13 @@ import {
 import { DEFAULT_OUTBOX_MAX_AGE_MS, OUTBOX_DRAIN_INTERVAL_MS } from "@/lib/conversionFailures/outbox";
 import { CONTEXT_WINDOW_CHARS } from "@/lib/conversionFailures/occurrence";
 import { RETENTION_DAYS } from "@/lib/conversionFailures/retention";
+import { AI_FALLBACK_THRESHOLD } from "@/features/documents/quality";
 
 /** Every `Bilingual` in the file, flattened, so no block escapes the shape checks. */
 const allCopy: { label: string; value: Bilingual }[] = [
   { label: "CONVERTER_NOTE", value: CONVERTER_NOTE },
   { label: "DOCUMENTS_NOTE", value: DOCUMENTS_NOTE },
+  { label: "AI_TRANSCRIPTION_NOTE", value: AI_TRANSCRIPTION_NOTE },
   { label: "PRIVACY_LINK_LABEL", value: PRIVACY_LINK_LABEL },
   { label: "FOOTER_LINK_LABEL", value: FOOTER_LINK_LABEL },
   { label: "PRIVACY_PAGE_TITLE", value: PRIVACY_PAGE_TITLE },
@@ -51,6 +54,12 @@ describe("the disclosure copy agrees with the code it describes", () => {
   it("states the retention periods the writer actually stamps", () => {
     expect(RETENTION.occurrenceDays).toBe(RETENTION_DAYS.conversionFailures);
     expect(RETENTION.patternDays).toBe(RETENTION_DAYS.failurePatterns);
+  });
+
+  it("states the AI fallback threshold the documents page actually uses", () => {
+    const percent = Math.round(AI_FALLBACK_THRESHOLD * 100);
+    expect(AI_TRANSCRIPTION_NOTE.en).toContain(`${percent}%`);
+    expect(AI_TRANSCRIPTION_NOTE.bn).toContain(`${percent.toLocaleString("bn-BD")}%`);
   });
 
   it("states how long a report waits in the browser, as the outbox actually does", () => {

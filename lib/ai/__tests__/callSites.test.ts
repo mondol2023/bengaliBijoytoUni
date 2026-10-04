@@ -95,6 +95,13 @@ describe("the scan sees the tree it claims to", () => {
  *       -> lib/ai/registry.ts                                       (the only provider importer; flag enforced here)
  *         -> lib/ai/providers/{gemini,openai}.ts                    (the only modules holding a key)
  *
+ * and a second chain, for whole-document transcription (its own switch,
+ * `AI_TRANSCRIPTION_ENABLED`, enforced in the same registry):
+ *
+ *   app/api/ai/transcribe/route.ts      (public HTTP entry, rate-limited; outside app/api/documents)
+ *     -> lib/ai/transcribeDocument.ts   (the only transcription service)
+ *       -> lib/ai/registry.ts           (getTranscriptionProvider; flag enforced here)
+ *
  * Each `it` below pins one link. Adding a second admin route, or importing a
  * provider from somewhere new, fails the matching case by name.
  */
@@ -104,9 +111,17 @@ describe("Guard B: only one chain reaches a provider", () => {
     expect(importersMatching(pattern)).toStrictEqual(["lib/ai/registry.ts"]);
   });
 
-  it("has exactly one module importing the registry", () => {
+  it("has exactly the two service modules importing the registry", () => {
     const pattern = /from\s+["'](?:@\/lib\/ai\/registry|\.{1,2}\/registry)["']/;
-    expect(importersMatching(pattern)).toStrictEqual(["lib/ai/resolveConversionFailure.ts"]);
+    expect(importersMatching(pattern)).toStrictEqual([
+      "lib/ai/resolveConversionFailure.ts",
+      "lib/ai/transcribeDocument.ts",
+    ]);
+  });
+
+  it("has exactly one route importing the transcription service, outside the conversion path", () => {
+    const pattern = /from\s+["'](?:@\/lib\/ai\/transcribeDocument|\.{1,2}\/transcribeDocument)["']/;
+    expect(importersMatching(pattern)).toStrictEqual(["app/api/ai/transcribe/route.ts"]);
   });
 
   it("has exactly one route importing the resolution service", () => {

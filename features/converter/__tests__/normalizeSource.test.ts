@@ -52,7 +52,8 @@ describe("normalizeSource — only where the ambiguity is real", () => {
   });
 
   it("says nothing when the encoding does not map the character at all", () => {
-    expect(normalizeSource(MIXED, alphaAnsi).signals).toEqual([]);
+    // alpha-ansi maps ’ (ঞ্চ) and the soft hyphen (ে), but not “.
+    expect(normalizeSource(`${LEGACY} \u201C শিক্ষা`, alphaAnsi).signals).toEqual([]);
   });
 
   it("says nothing about text with no ambiguous characters", () => {

@@ -26,3 +26,19 @@ export function isAiResolutionEnabled(): boolean {
   if (typeof raw !== "string") return false;
   return TRUTHY.has(raw.trim().toLowerCase());
 }
+
+/**
+ * The separate switch for whole-document AI transcription
+ * (`lib/ai/transcribeDocument.ts`). Separate from the switch above because the
+ * two spend money on different people's behalf: resolution is an admin
+ * reviewing one byte sequence, transcription is any visitor's whole file sent
+ * to a provider. Turning on one must never arm the other. Same fail-closed
+ * parsing.
+ */
+export const AI_TRANSCRIPTION_ENABLED_ENV = "AI_TRANSCRIPTION_ENABLED";
+
+export function isAiTranscriptionEnabled(): boolean {
+  const raw = process.env[AI_TRANSCRIPTION_ENABLED_ENV];
+  if (typeof raw !== "string") return false;
+  return TRUTHY.has(raw.trim().toLowerCase());
+}

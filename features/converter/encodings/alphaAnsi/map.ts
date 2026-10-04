@@ -78,8 +78,12 @@ export const alphaAnsiRules: GlyphRule[] = [
   { match: "o", unicode: "ষ" },
   { match: "p", unicode: "স" },
   { match: "q", unicode: "হ" },
-  { match: "r", unicode: "ড়" },
-  { match: "s", unicode: "ঢ়" },
+  // r/s were first entered as ড়/ঢ় by slot position; real court text proves
+  // otherwise: "h¡c£fr" is বাদীপক্ষ, "fË¢af¢r" প্রতিপক্ষ, "rja¡" ক্ষমতা, and
+  // "Mps¡" খসড়া, "L¡WNs¡u" কাঠগড়ায়. ক্ষ sits in this slot as a unit, the
+  // way many legacy layouts treat it as a letter of its own.
+  { match: "r", unicode: "ক্ষ" },
+  { match: "s", unicode: "ড়" },
   { match: "u", unicode: "য়" },
 
   // --- Post-base marks ---
@@ -131,6 +135,84 @@ export const alphaAnsiRules: GlyphRule[] = [
   { match: "•", unicode: "ঞ্চ", reorder: "none" },
   { match: "ö", unicode: "শু", reorder: "none" },
 
+  // --- The same pairs after a copy path folded ²/¹ into plain 2/1 ---
+  // Word and some PDF/clipboard paths apply compatibility normalization
+  // (NFKC), which turns the superscript second byte into an ordinary digit:
+  // a user's court order arrived as "Eš2" / "hš2hÉ" for উক্ত / বক্তব্য. A
+  // digit glued to one of these conjunct bytes is never a real numeral.
+  { match: "š2", unicode: "ক্ত", reorder: "none" },
+  { match: "œ2", unicode: "ক্র", reorder: "none" },
+  { match: "Ù1", unicode: "স্ত", reorder: "none" },
+  { match: "q2", unicode: "হ্ন", reorder: "none" },
+  { match: "¿1", unicode: "ন্ত", reorder: "none" },
+
+  // --- Whole sequences a PDF copy path scrambled (a 2019 suit plaint) ---
+  // A zero-width below-base glyph emitted one slot late, sometimes after an
+  // inserted space. Unlike the cases `rules.ts` repairs, the scrambled order
+  // here still reads as valid typed order (মলূ, চ্র), so only the exact
+  // sequence can be fixed. The same plaint also spells each word correctly
+  // ("j§mÉ" মূল্য, "fÐQ¡l" প্রচার), which is what pins these.
+  { match: "jm§ É", unicode: "মূল্য", reorder: "none" },
+  { match: "jm§É", unicode: "মূল্য", reorder: "none" },
+  { match: "fQÐ", unicode: "প্রচ", reorder: "none" },
+
+  // --- Conjuncts from a second document (a 2019 High Court judgment) ---
+  // Derived by aligning this table's output, byte by byte, against an
+  // independent full transcription of the same judgment — not confirmed by
+  // the document's owner the way the land-record paragraph was. Each entry
+  // is backed by several distinct words; see the fixtures.
+  { match: "q²", unicode: "হ্ন", reorder: "none" }, // ¢Q¢q²a চিহ্নিত
+  { match: "Øq", unicode: "স্থ", reorder: "none" }, // EfØq¡fe উপস্থাপন
+  { match: "¿¹", unicode: "ন্ত", reorder: "none" }, // ¢pÜ¡¿¹ সিদ্ধান্ত
+  { match: "¿»", unicode: "ন্ত্র", reorder: "none" }, // j¿»Z¡mu মন্ত্রণালয়
+  { match: "…l¦", unicode: "গুরু", reorder: "none" }, // …l¦aÄ গুরুত্ব (a bare … stays an ellipsis)
+  // "~®" is ৈ in this document (l¡S~®e¢aL রাজনৈতিক) but is deliberately not
+  // a rule: it is the only two-bytes-to-one-character entry, and it would
+  // drop this table's minimum length ratio below 1, loosening the check in
+  // lib/conversionFailures/resolutionValidator.ts. It surfaces as unmapped.
+  { match: "š", unicode: "ত্ত", reorder: "none" }, // pÇf¢š সম্পত্তি
+  { match: "Ü", unicode: "দ্ধ", reorder: "none" },
+  { match: "Ÿ", unicode: "দ্দ", reorder: "none" }, // ®j¡LŸj¡ মোকদ্দমা
+  { match: "‘", unicode: "জ্ঞ", reorder: "none" }, // ¢h‘ বিজ্ঞ
+  { match: "ä", unicode: "ন্ড", reorder: "none" }, // m¡ä ল্যান্ড
+  { match: "à", unicode: "দ্ব", reorder: "none" }, // à¡l¡ দ্বারা
+  { match: "â", unicode: "দ্র", reorder: "none" }, // â¦a দ্রুত
+  { match: "ø", unicode: "ষ্ট", reorder: "none" }, // l¡øÊ রাষ্ট্র
+  { match: "ù", unicode: "ষ্ঠ", reorder: "none" }, // fË¢aù¡ প্রতিষ্ঠা
+  { match: "ç", unicode: "প্ত", reorder: "none" }, // AhprfË¡ç অবসরপ্রাপ্ত
+  { match: "æ", unicode: "ন্ন", reorder: "none" }, // ¢h¢iæ বিভিন্ন
+  { match: "î", unicode: "ব্ব", reorder: "none" }, // eîC নব্বই
+  { match: "’", unicode: "ঞ্চ", reorder: "none" }, // h’¢a বঞ্চিত
+  { match: "ð", unicode: "ম্ব", reorder: "none" }, // ¢hm−ð বিলম্বে
+  { match: "‹", unicode: "জ্জ", reorder: "none" }, // ¢ej‹¢a নিমজ্জিত
+  { match: "‰", unicode: "ঙ্গ", reorder: "none" }, // fËp‰ প্রসঙ্গ
+  { match: "ü", unicode: "স্ব", reorder: "none" }, // ü¡d£ea¡ স্বাধীনতা
+
+  // Half forms: a consonant whose hasant joins it to the *next* token
+  // (Çf -> ম্প). `engine/reorder.ts` keeps a token ending in ্ glued to
+  // what follows, so a pre-base vowel or reph spans the whole cluster.
+  { match: "Ø", unicode: "স্", reorder: "none" }, // ®l¢SØVÊ¡l রেজিস্ট্রার
+  { match: "Ç", unicode: "ম্", reorder: "none" }, // pÇf¢š সম্পত্তি
+  { match: "Ö", unicode: "ষ্", reorder: "none" }, // ¢eÖf¢š নিষ্পত্তি
+  { match: "Ò", unicode: "ল্", reorder: "none" }, // L−Òf কল্পে
+  { match: "¾", unicode: "ন্", reorder: "none" }, // Sh¡eh¢¾c জবানবন্দি
+  { match: "µ", unicode: "চ্", reorder: "none" }, // k¡−µR যাচ্ছে
+  // Visible hasant (এতদ্‌সংক্রান্ত); a doubled byte is one sign.
+  { match: "ÚÚ", unicode: "্\u200C", reorder: "none" },
+  { match: "Ú", unicode: "্\u200C", reorder: "none" },
+
+  // Folas with more than one glyph width — the font picks the one that fits
+  // under its base, so ্র alone has four bytes (Ð Ë Ê Ì).
+  { match: "Ë", unicode: "্র", reorder: "none" }, // fËcn প্রদশ
+  { match: "Ê", unicode: "্র", reorder: "none" }, // VÊ¡Ch¤e¡m ট্রাইব্যুনাল
+  { match: "Ì", unicode: "্র", reorder: "none" }, // l¡øÌ£u রাষ্ট্রীয়
+  { match: "Ä", unicode: "্ব", reorder: "none" }, // c¡¢uaÄ দায়িত্ব
+  { match: "Å", unicode: "্ব", reorder: "none" },
+  { match: "Æ", unicode: "্ব", reorder: "none" }, // pšÆ সত্ত্ব
+  { match: "Ô", unicode: "্ল", reorder: "none" }, // pw¢nÔø সংশ্লিষ্ট
+  { match: "À", unicode: "্ন", reorder: "none" }, // ¢ejÀ নিম্ন
+  { match: "È", unicode: "্ম", reorder: "none" }, // pÈ¡lL স্মারক
+
   // --- Vowel signs (kar) ---
   // ো/ৌ have no byte of their own: they are the pre-base ে byte, the
   // consonant, then ¡ — NFC folds ে+া into ো in `engine/normalize.ts`.
@@ -143,4 +225,15 @@ export const alphaAnsiRules: GlyphRule[] = [
   { match: "ª", unicode: "ৃ", reorder: "after-consonant" },
   { match: "®", unicode: "ে", reorder: "before-consonant" },
   { match: "−", unicode: "ে", reorder: "before-consonant" },
+  // The second ে byte (0xAD in the font) reaches us as whatever the copy
+  // path made of it: U+2212 above, or the raw soft hyphen. Browsers often
+  // drop a soft hyphen on copy, which is why pasted text from this layout
+  // can be missing ে outright — nothing in the bytes is left to convert.
+  { match: "\u00AD", unicode: "ে", reorder: "before-consonant" },
+  { match: "¦", unicode: "ু", reorder: "after-consonant" }, // l¦ রু
+  { match: "©", unicode: "ূ", reorder: "after-consonant" }, // l©f রূপ
+  { match: "«", unicode: "ৃ", reorder: "after-consonant" }, // a«a£u তৃতীয়
+  // ৌ is ে + base + this length mark; NFC composes the pair.
+  { match: "±", unicode: "ৗ", reorder: "after-consonant" }, // ®Q±d¤l£ চৌধুরী
+  { match: "°", unicode: "ৈ", reorder: "before-consonant" }, // °hWL বৈঠক
 ];

@@ -117,6 +117,22 @@ export const DOCUMENTS_NOTE: Bilingual = {
     "আপনার অ্যাকাউন্ট থেকে সেটি মুছে ফেলতে পারেন।",
 };
 
+/**
+ * Next to the "Convert with Gemini" control on the documents page.
+ * `app/api/ai/transcribe/route.ts`, `lib/ai/transcribeDocument.ts`,
+ * `hooks/useDocumentConversion.ts` (the automatic trigger and its switch).
+ */
+export const AI_TRANSCRIPTION_NOTE: Bilingual = {
+  en:
+    "When our converter scores a file below 80%, or cannot read it, the file is sent to Google " +
+    "Gemini to be read instead — unless you turn that off here. Google processes the file under " +
+    "its own terms; we do not store it or the result.",
+  bn:
+    "আমাদের কনভার্টার কোনো ফাইলকে ৮০%-এর নিচে মান দিলে, বা ফাইলটি পড়তে না পারলে, ফাইলটি পড়ার " +
+    "জন্য গুগল জেমিনিতে পাঠানো হয় — যদি না আপনি এখানে তা বন্ধ করেন। গুগল নিজের শর্ত অনুযায়ী " +
+    "ফাইলটি প্রক্রিয়া করে; আমরা ফাইলটি বা ফলাফল সংরক্ষণ করি না।",
+};
+
 /** Placement C — the `/privacy` page both inline lines link to. */
 export const PRIVACY_PAGE_TITLE: Bilingual = {
   en: "What we collect",
@@ -154,6 +170,19 @@ export const PRIVACY_PAGE_SECTIONS: DisclosureSection[] = [
         bn:
           "আপনি যে ফাইল আপলোড করেন সেটি আলাদা: সেটি আমাদের সার্ভারে পড়া ও রূপান্তর করা হয়, তাই " +
           "ফাইলের বিষয়বস্তু সার্ভারের মধ্য দিয়ে যায়।",
+      },
+      {
+        // `app/api/ai/transcribe/route.ts`, `features/documents/quality.ts`.
+        en:
+          "If our converter scores an uploaded file below 80%, or cannot read it at all, the file " +
+          "is sent to Google Gemini, which reads it and returns the text. You can turn this off on " +
+          "the documents page, or send a file to Gemini yourself with its button. We do not store " +
+          "the file or Gemini's result.",
+        bn:
+          "আমাদের কনভার্টার কোনো আপলোড করা ফাইলকে ৮০%-এর নিচে মান দিলে, বা একেবারেই পড়তে না " +
+          "পারলে, ফাইলটি গুগল জেমিনিতে পাঠানো হয়, যা সেটি পড়ে লেখাটি ফেরত দেয়। ডকুমেন্ট পাতায় " +
+          "আপনি এটি বন্ধ করতে পারেন, অথবা বোতাম চেপে নিজেই কোনো ফাইল জেমিনিতে পাঠাতে পারেন। আমরা " +
+          "ফাইলটি বা জেমিনির ফলাফল সংরক্ষণ করি না।",
       },
     ],
   },
