@@ -50,11 +50,9 @@ error rather than degrading.
 - The privacy disclosure copy (Phase 3, `docs/privacy-disclosure-proposal.md`).
 - `AI_UNVERIFIED_LABEL`, English and Bengali
   (`lib/conversionFailures/knownResolutions.ts`).
-- `FALLBACK_ACCEPTED_LABEL`, English and Bengali (Phase 6, same file). Held
-  as `TBD_ACCEPTED_LABEL`, the same `TBD`-marked draft shape. It has no flag
-  of its own — an accepted fallback is shown whenever fallbacks are — so the
-  gate on it is `NEXT_PUBLIC_ENABLE_FALLBACK_PIPELINE`, off by default. That
-  flag must not be turned on until this copy is approved.
+- ~~`FALLBACK_ACCEPTED_LABEL`, English and Bengali~~ — approved in Phase 9
+  (`Accepted using AI-assisted fallback` / `AI-সহায়ক বিকল্প পদ্ধতিতে গ্রহণ করা
+  হয়েছে`); see `release-record-phase9.md`.
 
 The label currently ships as `TBD_LABEL`, a marked placeholder. That is not a
 release blocker: `fallback_unverified` is gated behind `SERVE_UNVERIFIED_AI`,

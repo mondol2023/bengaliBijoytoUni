@@ -138,7 +138,7 @@ behaviour from the same data. Nothing in either rollback needs a Firestore migra
 
 ## Approvals this plan needs, in order
 
-1. Final copy for `FALLBACK_ACCEPTED_LABEL` (before Stage 1).
+1. ~~Final copy for `FALLBACK_ACCEPTED_LABEL` (before Stage 1).~~ Approved in Phase 9; duration and abort criteria too (`release-record-phase9.md`).
 2. Setting the Preview variable for one branch (Stage 1).
 3. Setting the Production variable and rebuilding (Stage 2).
 4. Optional, separately: `AI_UNVERIFIED_LABEL` copy, the `SERVE_UNVERIFIED_AI` trust decision,

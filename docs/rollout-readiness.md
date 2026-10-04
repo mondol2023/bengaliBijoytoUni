@@ -147,8 +147,9 @@ Preview deployment with the pipeline on is a public URL too.
 ### Manual steps that should precede Stage 1
 
 Existing, from `docs/pending-manual-steps.md`, still open as far as the repository can tell:
-the four TTL policies (§1), the composite indexes (§2), and **the copy review (§3), which
-includes `FALLBACK_ACCEPTED_LABEL` and must come before Stage 1.** Stage 1 is the first stage
+the four TTL policies (§1), the composite indexes (§2), and the copy review (§3). Its
+`FALLBACK_ACCEPTED_LABEL` item, the one that had to come before Stage 1, was approved in
+Phase 9 (`release-record-phase9.md`). Stage 1 is the first stage
 that renders that label to readers. `.env.local.example` already says "Do not turn on before
 the copy … is approved."
 
@@ -201,7 +202,7 @@ unmapped list, so a sequence a fallback filled is still reported as a failure, a
 | Logs: user input / converted documents | Not logged. `known_snapshot_built` carries counts and a validated encoding id. `FALLBACK_PIPELINE_ERROR` carries a fixed message and no samples. Rate-limit failure logs carry no key or IP (pinned in `sharedCounter.rolloutHealth.test.ts`). |
 | Logs: AI-generated text | Fixed in `c9068f8` for unreadable 200 responses. **Residual, pending a decision:** a JSON-parse failure in `lib/ai/responseSchema.ts` logs the parser's error, whose V8 message quotes a short fragment of the model's text; validator rejection messages (logged in `debug`) may quote "the offending characters"; a provider's non-2xx body (provider-authored error JSON) is logged as-is. |
 | Logs: secrets / tokens / keys | No key, token or credential is put in any log line by this code. The Gemini key travels in the request URL; a `fetch` failure's `cause` is logged, and undici's messages do not normally include the URL, but this has not been proven by a test. |
-| `FALLBACK_ACCEPTED_LABEL` | **Draft.** Currently `TBD — Filled from a reviewed correction (wording pending review)` / Bengali equivalent. Rendered from Stage 1. Not finalised by this work. |
+| `FALLBACK_ACCEPTED_LABEL` | **Approved (Phase 9).** `Accepted using AI-assisted fallback` / `AI-সহায়ক বিকল্প পদ্ধতিতে গ্রহণ করা হয়েছে`. Rendered from Stage 1. |
 | `AI_UNVERIFIED_LABEL` | **Draft.** Currently `TBD — AI-suggested, unverified (wording pending review)`. Travels inside the public payload when `SERVE_UNVERIFIED_AI` is on; never rendered by the converter today. |
 | Public known-pattern exposure | Unchanged and independent of both switches: per open pattern, the failed sequence, its category and its resolved flag (no counts, ids or timestamps); per servable resolution, sequence, candidate, verification, label, engine version. Threat model: `docs/threat-model-public-failure-endpoints.md`. |
 | Unresolved output | Raw legacy bytes, monospace, danger colour; never guessed. |
@@ -211,7 +212,7 @@ unmapped list, so a sequence a fallback filled is still reported as a failure, a
 
 ### Pending review — not decided here
 
-1. Final English and Bengali copy for `FALLBACK_ACCEPTED_LABEL` (blocks Stage 1).
+1. ~~Final English and Bengali copy for `FALLBACK_ACCEPTED_LABEL`~~ — approved in Phase 9 (`release-record-phase9.md`).
 2. Final copy for `AI_UNVERIFIED_LABEL` (blocks Stage 3).
 3. Whether the residual log fragments above are acceptable, or the JSON-parse `cause` and the
    rejection messages should be reduced to codes. Each site is classified in

@@ -33,20 +33,17 @@ what cannot be observed yet.
 
 | What | Blocked on |
 |---|---|
-| Stage 1, the pipeline on one Preview branch | `FALLBACK_ACCEPTED_LABEL` copy; owner approval |
+| Stage 1, the pipeline on one Preview branch | a staging Firebase project; Vercel access; owner go (label copy, duration and abort criteria approved, `release-record-phase9.md`) |
 | Stage 2, the pipeline in Production | Stage 1 passing; owner approval; owner-set canary duration |
 
 ### Needs a human decision
 
 | Decision | Why it is not an engineering call |
 |---|---|
-| `FALLBACK_ACCEPTED_LABEL` final copy (en + bn) | Reader-facing product copy. Still the `TBD` draft; `knownResolutions.test.ts` fails if it stops being one without that test being changed on purpose. |
 | `SERVE_UNVERIFIED_AI` on, anywhere | Publishes unreviewed AI text on a public URL. Trust decision. |
 | `AI_UNVERIFIED_LABEL` final copy | Product copy; only meaningful after the decision above. |
 | Rendering unverified text in the converter | Needs a code change *and* a trust decision; today it cannot happen under any flag value. |
 | Log-fragment policy (§6) | Privacy versus debuggability. |
-| Canary duration, and any numeric abort threshold | No telemetry in the repository justifies a number (§3). |
-| Whether a Preview deployment uses the production Firebase project | Data-handling decision (`rollout-canary-and-rollback.md`, Stage 1). |
 | Per-conversion metrics endpoint | API-contract change (§5). |
 | Reverify cron | A second authentication exception (`docs/proposal-reverify-cron.md`). |
 
@@ -76,9 +73,9 @@ changing what any log line contains (§6); moving the Gemini key from the URL to
 | Flag parsing (both flags) | Yes | No | Verified; tests added |
 | `SERVE_UNVERIFIED_AI` kept out of browser bundles | Yes | No | Verified; tests and build check added |
 | Post-build bundle check | Yes | No | Added |
-| Preview pipeline rollout (Stage 1) | Yes, once the label copy lands | **Yes** | No |
+| Preview pipeline rollout (Stage 1) | Yes; needs a staging Firebase project | **Yes** | No |
 | Production pipeline rollout (Stage 2) | Yes | **Yes** | No |
-| `FALLBACK_ACCEPTED_LABEL` final copy | No (draft `TBD`) | **Yes** | No |
+| `FALLBACK_ACCEPTED_LABEL` final copy | Yes (approved Phase 9, pinned in `knownResolutions.test.ts`) | Given | n/a |
 | `SERVE_UNVERIFIED_AI` on (Stage 3) | No | **Yes** | No |
 | `AI_UNVERIFIED_LABEL` final copy | No (draft `TBD`) | **Yes** | No |
 | Render unverified text in the converter | No (needs code) | **Yes** | No |
