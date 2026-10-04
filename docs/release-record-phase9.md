@@ -129,7 +129,10 @@ A string in a bundle proves the configuration only. All four checks are required
    Preview lands in the staging project and is absent from Production. This is the strongest
    of the four checks.
 
-Not yet implemented. It depends on a staging project ID existing.
+Tooling built in Phase 10 (`docs/staging-environment.md` §7): check 1 is
+`npm run check:release-artifact`, checks 2 and 4 are `/api/admin/firebase-identity`
+(GET and POST) plus `npm run staging:firebase -- probe`. None of it has run against a
+staging project yet, because none exists (`docs/release-record-phase10.md`).
 
 ## Stage 1 execution log
 

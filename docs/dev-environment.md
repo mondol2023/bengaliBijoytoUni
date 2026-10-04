@@ -205,8 +205,8 @@ production console. Then move the four bullets above into the verified list.
   built**: it changes what `npm run dev` does against a real project, which is a decision
   rather than a cleanup.
 - **A staging project** (the previous revision's Option 2), for "does this work deployed",
-  which the emulator is honest about not answering. Deferred, per the decision to do the
-  emulator now and staging later.
+  which the emulator is honest about not answering. Specified and guarded in Phase 10
+  (`docs/staging-environment.md`); the project itself awaits the owner's Google account.
 - **Seed data.** `firebase emulators:start --import ./emulator-data --export-on-exit` would
   make a local dataset persist between runs. Not set up; `/emulator-data/` is gitignored ready
   for it.
