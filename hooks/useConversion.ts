@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { detectEncoding, type ConversionOutput } from "@/features/converter/engine/pipeline";
-import { computeConversion, snapshotRequest } from "@/features/converter/fallbackPipeline";
+import {
+  computeConversion,
+  fallbackFailureIssue,
+  snapshotRequest,
+} from "@/features/converter/fallbackPipeline";
+import { recordIssue } from "@/lib/log/reportIssue";
 import { loadResolutionSource } from "@/features/converter/resolutionSource";
 import type { ResolutionSource, RunConversionResult } from "@/features/converter/runConversion";
 import { isFallbackPipelineEnabled } from "@/lib/conversionFailures/serveFlags";
@@ -100,14 +105,16 @@ export function useConversion(initialTier: TierId = "easy"): UseConversionResult
   const resolutions =
     loaded !== null && loaded.encodingId === resolvedEncodingId ? loaded.source : undefined;
 
-  const { output, error, fallback } = useMemo((): {
+  const { output, error, fallback, fallbackFailed } = useMemo((): {
     output: ConversionOutput | null;
     error: AppError | null;
     fallback: RunConversionResult | null;
+    fallbackFailed: boolean;
   } => {
-    if (debouncedText.length === 0) return { output: null, error: null, fallback: null };
-    if (!usage.withinLimit) return { output: null, error: null, fallback: null };
-    if (!resolvedEncodingId) return { output: null, error: null, fallback: null };
+    const none = { output: null, error: null, fallback: null, fallbackFailed: false };
+    if (debouncedText.length === 0) return none;
+    if (!usage.withinLimit) return none;
+    if (!resolvedEncodingId) return none;
 
     return computeConversion({
       text: debouncedText,
@@ -116,6 +123,14 @@ export function useConversion(initialTier: TierId = "easy"): UseConversionResult
       resolutions,
     });
   }, [debouncedText, resolvedEncodingId, usage.withinLimit, pipelineEnabled, resolutions]);
+
+  // A pipeline that threw has already degraded to the engine's own output
+  // (`computeConversion`); this only makes the failure visible to whoever
+  // reads `errorLogs`. Outside render, and merged by `recordIssue`, so one
+  // tab posts it once per encoding however often it recurs.
+  useEffect(() => {
+    if (fallbackFailed) recordIssue(fallbackFailureIssue(resolvedEncodingId ?? null));
+  }, [fallbackFailed, resolvedEncodingId]);
 
   return {
     inputText,

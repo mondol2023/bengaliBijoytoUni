@@ -61,8 +61,9 @@ describe("with the pipeline flag off, the converter is the pre-Phase-6 converter
       const engine = convertLegacyText(INPUT, "bijoy");
       if (!engine.ok) throw new Error("unreachable");
 
-      // Exactly what the hook returned before Phase 6, even with a resolution on offer.
-      expect(computed).toStrictEqual({ output: engine.value, error: null, fallback: null });
+      // Exactly what the hook returned before Phase 6, even with a resolution on offer
+      // (`fallbackFailed` is the pipeline's own failure signal, and is false when it is off).
+      expect(computed).toStrictEqual({ output: engine.value, error: null, fallback: null, fallbackFailed: false });
       expect(computed.output?.unicodeText).toContain(UNMAPPED_BYTE);
       expect(snapshotRequest(isFallbackPipelineEnabled(), "bijoy")).toBeNull();
     });

@@ -33,13 +33,19 @@ import { getEncoding } from "./encodings/registry";
 import { runConversion, type ResolutionSource, type RunConversionResult } from "./runConversion";
 import type { LoadResolutionSourceOptions } from "./resolutionSource";
 import type { AppError } from "@/lib/errors/types";
+import type { ConversionLogInput } from "@/lib/log/conversionLog";
 
 export interface ComputedConversion {
   /** The engine's output; identical whether the pipeline is on or off. */
   readonly output: ConversionOutput | null;
   readonly error: AppError | null;
-  /** Null exactly when the pipeline is off (or the conversion failed). */
+  /** Null exactly when the pipeline is off (or the conversion failed, or the pipeline threw). */
   readonly fallback: RunConversionResult | null;
+  /**
+   * True when the pipeline was on and threw, so this result is the
+   * pipeline-off one instead. The caller reports it; nothing here does I/O.
+   */
+  readonly fallbackFailed: boolean;
 }
 
 export interface ComputeConversionOptions {
@@ -52,23 +58,60 @@ export interface ComputeConversionOptions {
   readonly serveUnverified?: boolean;
 }
 
-export function computeConversion(options: ComputeConversionOptions): ComputedConversion {
-  if (!options.pipelineEnabled) {
-    const result = convertLegacyText(options.text, options.encodingId);
-    return result.ok
-      ? { output: result.value, error: null, fallback: null }
-      : { output: null, error: result.error, fallback: null };
-  }
-
-  const result = runConversion({
-    text: options.text,
-    encodingId: options.encodingId,
-    resolutions: options.resolutions,
-    serveUnverified: options.serveUnverified,
-  });
+function engineOnly(options: ComputeConversionOptions, fallbackFailed: boolean): ComputedConversion {
+  const result = convertLegacyText(options.text, options.encodingId);
   return result.ok
-    ? { output: result.value.conversion, error: null, fallback: result.value }
-    : { output: null, error: result.error, fallback: null };
+    ? { output: result.value, error: null, fallback: null, fallbackFailed }
+    : { output: null, error: result.error, fallback: null, fallbackFailed };
+}
+
+/**
+ * ## A pipeline that throws degrades to off
+ *
+ * This runs inside the converter's render, so an exception from the store
+ * side — a malformed snapshot entry, a validator bug — would otherwise take
+ * the output panel with it. It falls back to exactly the pipeline-off
+ * result instead and sets `fallbackFailed`. If the engine itself throws on
+ * that second run, it throws as it did before Phase 6.
+ */
+export function computeConversion(options: ComputeConversionOptions): ComputedConversion {
+  if (!options.pipelineEnabled) return engineOnly(options, false);
+
+  let result: ReturnType<typeof runConversion>;
+  try {
+    result = runConversion({
+      text: options.text,
+      encodingId: options.encodingId,
+      resolutions: options.resolutions,
+      serveUnverified: options.serveUnverified,
+    });
+  } catch {
+    return engineOnly(options, true);
+  }
+  return result.ok
+    ? { output: result.value.conversion, error: null, fallback: result.value, fallbackFailed: false }
+    : { output: null, error: result.error, fallback: null, fallbackFailed: false };
+}
+
+export const FALLBACK_PIPELINE_ERROR_CODE = "FALLBACK_PIPELINE_ERROR";
+
+/**
+ * What `useConversion` reports when `fallbackFailed` is set: through the
+ * existing session log and `/api/error-logs`, unchanged. A fixed message and
+ * no samples — never the input, the output, or the thrown error's text — so
+ * the report carries the fact, the encoding and nothing a user typed.
+ * `recordIssue` merges repeats, so one tab posts it once per encoding.
+ */
+export function fallbackFailureIssue(encodingId: string | null): ConversionLogInput {
+  return {
+    kind: "unknown",
+    severity: "warning",
+    source: "text",
+    code: FALLBACK_PIPELINE_ERROR_CODE,
+    message: "Stored fallbacks could not be applied, so the converter's own output is shown.",
+    encodingId,
+    samples: [],
+  };
 }
 
 /**
