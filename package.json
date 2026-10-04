@@ -12,7 +12,8 @@
     "emulators": "firebase emulators:start --project demo-convert2uni --only auth,firestore,storage",
     "dev:emulated": "node scripts/requireEmulatorEnv.mjs && next dev",
     "scan:secrets": "node scripts/secretScan.mjs",
-    "scan:secrets:history": "node scripts/secretScan.mjs --history"
+    "scan:secrets:history": "node scripts/secretScan.mjs --history",
+    "check:client-flags": "node scripts/checkClientFlags.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
