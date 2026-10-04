@@ -3,7 +3,7 @@
  * users deserves the same treatment as the one guarding paid calls: every
  * way of getting it wrong must land on "off".
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -15,6 +15,38 @@ import {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+/**
+ * Values a dashboard, a shell or a copy-paste can produce that look like
+ * "on" to a person and must not be on. A quoted value is the realistic one:
+ * Vercel stores what is typed, quotes included, so `"true"` pasted from a
+ * `.env` file arrives as six characters.
+ */
+const ACCIDENTAL = [
+  '"true"',
+  "'1'",
+  "enabled",
+  "y",
+  "t",
+  "2",
+  "-1",
+  "truee",
+  "true​",
+  "ｔｒｕｅ",
+  "null",
+  "undefined",
+  "true,false",
+];
+
+describe.each([
+  [SERVE_UNVERIFIED_AI_ENV, isServeUnverifiedAiEnabled],
+  [ENABLE_FALLBACK_PIPELINE_ENV, isFallbackPipelineEnabled],
+] as const)("%s: accidental values", (name, read) => {
+  it.each(ACCIDENTAL)("%j is off", (raw) => {
+    vi.stubEnv(name, raw);
+    expect(read()).toBe(false);
+  });
 });
 
 describe("isServeUnverifiedAiEnabled", () => {
@@ -48,6 +80,55 @@ describe("isServeUnverifiedAiEnabled", () => {
 
   it("does not collide with the flag guarding outbound calls", () => {
     expect(SERVE_UNVERIFIED_AI_ENV).toBe("SERVE_UNVERIFIED_AI");
+  });
+
+  it("is never set in an environment template the repository ships", () => {
+    // Absent or empty only. A template is what a new environment is copied
+    // from, so a value here would turn unreviewed serving on by accident.
+    const root = path.join(__dirname, "..", "..", "..");
+    for (const file of [".env.local.example", ".env.development.local.example"]) {
+      const lines = readFileSync(path.join(root, file), "utf8").split(/\r?\n/);
+      const entries = lines.filter((line) => /^\s*(export\s+)?SERVE_UNVERIFIED_AI\s*=/.test(line));
+      for (const entry of entries) expect(entry, file).toBe(`${SERVE_UNVERIFIED_AI_ENV}=`);
+    }
+  });
+
+  describe("can never reach a browser bundle", () => {
+    // The converter's last line of defence is that this flag is off in every
+    // browser (`runConversion` refuses unverified entries client-side). That
+    // holds only while Next.js has no way to inline the value. Each test
+    // closes one way it could start to.
+    const root = path.join(__dirname, "..", "..", "..");
+
+    it("is not a NEXT_PUBLIC_ variable", () => {
+      expect(SERVE_UNVERIFIED_AI_ENV.startsWith("NEXT_PUBLIC_")).toBe(false);
+    });
+
+    it("is read by a computed key, which Next.js never inlines", () => {
+      const source = readFileSync(path.join(__dirname, "..", "serveFlags.ts"), "utf8");
+      expect(source).toContain("process.env[SERVE_UNVERIFIED_AI_ENV]");
+      expect(source).not.toMatch(/process\.env\.SERVE_UNVERIFIED_AI\b/);
+    });
+
+    it("is not forwarded by next.config.ts, whose `env` key inlines into every bundle", () => {
+      const config = readFileSync(path.join(root, "next.config.ts"), "utf8");
+      expect(config).not.toContain("SERVE_UNVERIFIED_AI");
+    });
+
+    it("has no NEXT_PUBLIC_ twin anywhere in the application source", () => {
+      const offenders: string[] = [];
+      const walk = (dir: string) => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else if (/\.(ts|tsx|mjs|js)$/.test(entry.name) && !full.endsWith("serveFlags.test.ts")) {
+            if (readFileSync(full, "utf8").includes("NEXT_PUBLIC_SERVE_UNVERIFIED")) offenders.push(full);
+          }
+        }
+      };
+      for (const dir of ["app", "components", "features", "hooks", "lib"]) walk(path.join(root, dir));
+      expect(offenders).toStrictEqual([]);
+    });
   });
 });
 
