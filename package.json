@@ -14,7 +14,8 @@
     "scan:secrets": "node scripts/secretScan.mjs",
     "scan:secrets:history": "node scripts/secretScan.mjs --history",
     "check:client-flags": "node scripts/checkClientFlags.mjs",
-    "check:release-artifact": "node scripts/checkReleaseArtifact.mjs"
+    "check:release-artifact": "node scripts/checkReleaseArtifact.mjs",
+    "staging:firebase": "node --env-file-if-exists=.env.staging.local scripts/stagingFirebase.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
