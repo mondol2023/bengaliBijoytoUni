@@ -107,6 +107,7 @@ Preview.
 | `0ba6120` | retention invariant: the probe route is a known `expireAt` writer, on its own collection |
 | `1f873c2` | test emails built from parts, so the working-tree secret scan needs no exemption |
 | `4473e32` | `docs/staging-environment.md` |
+| `e2616eb` | (owner's commit, "uupe1") stale-pointer updates in `release-record-phase9.md` (release gate) and `dev-environment.md` §7 |
 
 Validation at the end: `tsc` pass, lint pass, **1,866 tests / 109 files** pass
 (104 new), build pass (38 pages), `scan:secrets` no unexpected finding.
