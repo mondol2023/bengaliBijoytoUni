@@ -18,7 +18,7 @@ import type {
   ResolutionOptions,
 } from "../types";
 import { providerOk, providerErr } from "../types";
-import { ProviderErrors, providerErrorForHttpStatus } from "../errors";
+import { ProviderErrors, providerErrorForHttpStatus, unreadableResponseDebug } from "../errors";
 import { buildResolutionPrompt } from "../promptBuilder";
 import { parseProviderResponseText } from "../responseSchema";
 import { RESOLUTION_LIMITS } from "../limits";
@@ -71,7 +71,15 @@ async function callOpenAi(
     const body = (await response.json()) as unknown;
     const text = (body as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content;
     if (typeof text !== "string") {
-      return providerErr(ProviderErrors.invalidResponse("openai", { reason: "no content in OpenAI response", body }));
+      const shape = body as { choices?: { finish_reason?: unknown }[] };
+      return providerErr(
+        ProviderErrors.invalidResponse(
+          "openai",
+          unreadableResponseDebug("no content in OpenAI response", body, {
+            finishReason: shape?.choices?.[0]?.finish_reason,
+          }),
+        ),
+      );
     }
     return providerOk(text);
   } catch (cause) {

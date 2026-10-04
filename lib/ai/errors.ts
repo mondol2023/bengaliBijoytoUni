@@ -45,6 +45,32 @@ export function toSafeProviderError(error: ProviderError): Omit<ProviderError, "
   };
 }
 
+/** A provider's finish/block reason: a short enum token, never prose. */
+const ENUM_TOKEN = /^[A-Za-z_]{1,40}$/;
+
+/**
+ * What a log may keep of a 200 response an adapter could not read text out
+ * of: its top-level keys and the provider's own enum reasons. Never the body
+ * — `debug` is printed by `logAppError`, and an unreadable body is still a
+ * model response that can carry generated text in a field the adapter does
+ * not read (a refusal, a tool call, a second part).
+ */
+export function unreadableResponseDebug(
+  reason: string,
+  body: unknown,
+  reasons: Record<string, unknown>,
+): { reason: string; topLevelKeys: string[]; reasons: Record<string, string> } {
+  const topLevelKeys =
+    typeof body === "object" && body !== null && !Array.isArray(body)
+      ? Object.keys(body).filter((key) => ENUM_TOKEN.test(key))
+      : [];
+  const kept: Record<string, string> = {};
+  for (const [name, value] of Object.entries(reasons)) {
+    if (typeof value === "string" && ENUM_TOKEN.test(value)) kept[name] = value;
+  }
+  return { reason, topLevelKeys, reasons: kept };
+}
+
 export const ProviderErrors = {
   /**
    * The deployment-wide kill switch is off (`lib/ai/enabled.ts`). Distinct

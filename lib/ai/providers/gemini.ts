@@ -17,7 +17,7 @@ import type {
   ResolutionOptions,
 } from "../types";
 import { providerOk, providerErr } from "../types";
-import { ProviderErrors, providerErrorForHttpStatus } from "../errors";
+import { ProviderErrors, providerErrorForHttpStatus, unreadableResponseDebug } from "../errors";
 import { buildResolutionPrompt } from "../promptBuilder";
 import { parseProviderResponseText } from "../responseSchema";
 import { RESOLUTION_LIMITS } from "../limits";
@@ -68,7 +68,16 @@ async function callGemini(
     const text = (body as { candidates?: { content?: { parts?: { text?: string }[] } }[] })?.candidates?.[0]
       ?.content?.parts?.[0]?.text;
     if (typeof text !== "string") {
-      return providerErr(ProviderErrors.invalidResponse("gemini", { reason: "no text in Gemini response", body }));
+      const shape = body as { candidates?: { finishReason?: unknown }[]; promptFeedback?: { blockReason?: unknown } };
+      return providerErr(
+        ProviderErrors.invalidResponse(
+          "gemini",
+          unreadableResponseDebug("no text in Gemini response", body, {
+            finishReason: shape?.candidates?.[0]?.finishReason,
+            blockReason: shape?.promptFeedback?.blockReason,
+          }),
+        ),
+      );
     }
     return providerOk(text);
   } catch (cause) {
