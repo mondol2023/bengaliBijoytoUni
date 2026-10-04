@@ -3,7 +3,8 @@
 Status: **a plan. No stage has been entered.** Every stage change below is a Vercel project
 change and needs the owner's explicit approval first. Facts about the switches, the signals
 and the data are in [`rollout-readiness.md`](rollout-readiness.md); this file only orders
-them.
+them. The runnable pass/abort checks for every stage, the approval matrix and the timing
+table are in [`rollout-operations.md`](rollout-operations.md).
 
 ## Constraints the plan is built around
 
@@ -15,12 +16,16 @@ them.
   unverified switch needs a new deployment, because Vercel applies environment changes only
   to new deployments. Neither rollback is instantaneous; §Rollback gives the fastest path for
   each.
-- **Propagation floor: about six minutes.** After a change reaches the server, a browser may
-  keep a snapshot for `max-age=60` plus `stale-while-revalidate=300`, and an instance keeps a
-  built snapshot for 60 s (`SNAPSHOT_TTL_MS`). This is the only duration the repository
-  justifies. It is the minimum wait before judging a change, not an observation period.
-  The repository holds no evidence for how long each stage should run, so the owner sets
-  that.
+- **Propagation: about six minutes from the HTTP headers, but longer in the browser.**
+  The response headers allow `max-age=60` plus `stale-while-revalidate=300`, and an instance
+  keeps a built snapshot for 60 s (`SNAPSHOT_TTL_MS`). Phase 8 found a layer this figure
+  left out: with the pipeline on, the browser keeps its own localStorage copy, treats it as
+  fresh for 10 minutes without asking the server, and falls back to it for up to 60 minutes
+  when a revalidation fails. A reader who reloads can therefore keep seeing a just-rejected
+  resolution for about 11 minutes. The full table, the minimum verification wait and the
+  pinning test are in [`rollout-operations.md`](rollout-operations.md) §3. None of these is
+  an observation period. The repository holds no evidence for how long each stage should
+  run, so the owner sets that.
 - **Percentages and SLAs are not invented here.** Abort criteria are stated as events that
   can be observed, not thresholds.
 
@@ -41,7 +46,7 @@ them.
 | Switches | **Preview, one branch only:** pipeline **on**. Production unchanged (both off). Unverified **off** everywhere. |
 | Audience | whoever is given that Preview URL (team, invited testers). Vercel's deployment protection for Preview can restrict it further; that is a project setting, not decided here. |
 | Entry criteria | (1) `FALLBACK_ACCEPTED_LABEL` copy approved, because this is the first stage that shows it (pending-manual-steps §3); (2) at least one `accepted` resolution exists for an encoding the testers will use, or there is nothing to observe; (3) this repository's checks green on the deployed commit; (4) owner approval. |
-| What to watch | `FALLBACK_PIPELINE_ERROR` rows in `errorLogs`; `known_snapshot_built` lines (`resolutionsAccepted`, `resolutionsUnverified`, `serveUnverified`); `wrong_conversion` feedback; rate-limit refusals on `route: api/conversion-failures/known`; `[DATABASE_ERROR] Shared rate-limit check failed` lines |
+| What to watch | the checks in `rollout-operations.md` §4; in short: `FALLBACK_PIPELINE_ERROR` rows in `errorLogs`; `known_snapshot_built` lines (`resolutionsAccepted`, `resolutionsUnverified`, `serveUnverified`); `wrong_conversion` feedback; rate-limit refusals on `route: api/conversion-failures/known`; `[DATABASE_ERROR] Shared rate-limit check failed` lines |
 | Success | testers see accepted fallbacks marked and labelled; Copy and Download return the engine's text; no `FALLBACK_PIPELINE_ERROR`; every `known_snapshot_built` line has `resolutionsUnverified: 0` and `serveUnverified: false`; every `wrong_conversion` report on a filled segment has been triaged |
 | Abort | any `FALLBACK_PIPELINE_ERROR`; any `resolutionsUnverified > 0` or `serveUnverified: true`; a filled segment an admin confirms is wrong (reject that resolution; see Rollback); a converter that fails to render for a tester |
 | Rollback | remove the branch's Preview variable and redeploy that branch, or simply stop sharing the URL. Production is not involved. |
@@ -93,7 +98,11 @@ a new build is served.
    nothing else that matters shipped in between; otherwise use step 2.
 2. **Durable:** unset the variable for Production, then trigger a new production build.
    Without step 2, the next ordinary deployment would rebuild with the pipeline on again.
-3. Already-open tabs keep the bundle they loaded until they reload. Expect stragglers.
+3. **Verify the bundle.** Before step 2 ships, build the same commit locally with the variable
+   unset and run `npm run check:client-flags -- --expect-pipeline off` (exit 0). On the
+   deployment, open `/converter` in a fresh profile with Bijoy text: no request to
+   `/api/conversion-failures/known` means the served bundle has the pipeline off.
+4. Already-open tabs keep the bundle they loaded until they reload. Expect stragglers.
 
 What the rollback restores, pinned by `rolloutMatrix.test.ts` ("rollback"): no snapshot fetch,
 `fallback: null`, and output markup byte-identical to the pre-Phase-6 converter.
@@ -108,12 +117,14 @@ Read per request on the server, but Vercel applies env changes only to new deplo
 2. The next snapshot build after that excludes unverified entries. The per-instance cache is
    keyed on the switch, so an old build cannot mask the change (pinned in
    `known/route.test.ts` and `rolloutMatrix.test.ts`).
-3. Browsers may hold the previous payload for up to about six minutes (`max-age=60`,
-   `stale-while-revalidate=300`). No converter renders those entries either way (pinned in
-   `rolloutMatrix.test.ts`).
+3. Browsers may hold the previous payload: about six minutes in the HTTP cache, and up to 60
+   minutes in the pipeline's localStorage copy (`rollout-operations.md` §3). No converter
+   renders those entries either way (pinned in `rolloutMatrix.test.ts`). Anyone who already
+   fetched the payload keeps it. Publication cannot be recalled.
 4. Faster for a **single** bad candidate: an admin **rejects** that resolution in
-   `/admin/conversion-failures/[patternId]`. A rejected resolution is never served, under
-   either switch, from the next build on.
+   `/admin/conversion-failures/[patternId]`. The server stops serving it, under either
+   switch, within 60 s. A reader who reloads stops seeing it within about 11 minutes, or about
+   61 if their revalidation fails. An open tab keeps it until reload.
 
 ### What happens to stored data
 

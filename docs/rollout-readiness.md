@@ -6,7 +6,9 @@ repository, and nothing here changes the Vercel project. Written 2026-10-04 for 
 Phase 7 (verification, already done); this file avoids the number for that reason.
 
 Companion: [`rollout-canary-and-rollback.md`](rollout-canary-and-rollback.md) — the stages, and
-how to undo each one.
+how to undo each one. Phase 8 added [`rollout-operations.md`](rollout-operations.md): the
+approval matrix, the full propagation timing, runnable stage checks, the observability gaps
+and a per-site log classification.
 
 ## 1. Baseline
 
@@ -138,7 +140,8 @@ Preview deployment with the pipeline on is a public URL too.
   least one completed-but-unreviewed resolution exists for that encoding.
 - **Pipeline:** open the production converter, paste Bijoy text, and watch the network panel.
   A request to `/api/conversion-failures/known` means the bundle was built with the pipeline
-  on. None means off.
+  on. None means off. For a local build of the same commit, `npm run check:client-flags`
+  reads both flags out of `.next/static` (`scripts/checkClientFlags.mjs`).
 - **The `known_snapshot_built` log line** (§5) reports `serveUnverified` on every build.
 
 ### Manual steps that should precede Stage 1
@@ -211,7 +214,9 @@ unmapped list, so a sequence a fallback filled is still reported as a failure, a
 1. Final English and Bengali copy for `FALLBACK_ACCEPTED_LABEL` (blocks Stage 1).
 2. Final copy for `AI_UNVERIFIED_LABEL` (blocks Stage 3).
 3. Whether the residual log fragments above are acceptable, or the JSON-parse `cause` and the
-   rejection messages should be reduced to codes.
+   rejection messages should be reduced to codes. Each site is classified in
+   `rollout-operations.md` §6; the schema-validation path was checked in Phase 8 and carries no
+   model text.
 4. Whether unverified candidates should ever render in the converter (needs code; see §2).
 
 ## 7. Scheduled re-verification (Vercel Cron) — decision record, not implemented
