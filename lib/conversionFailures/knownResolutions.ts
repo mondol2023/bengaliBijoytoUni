@@ -45,25 +45,22 @@ export const TBD_LABEL: Bilingual = {
 export const AI_UNVERIFIED_LABEL: Bilingual = TBD_LABEL;
 
 /**
- * Draft wording for the `fallback_accepted` marker, held exactly as
- * `TBD_LABEL` is: a visible `TBD` marker in both languages, on the same review
- * list as the privacy copy and `AI_UNVERIFIED_LABEL`
- * (`docs/pending-manual-steps.md` §3).
+ * The label a `fallback_accepted` segment shows. Owner-approved copy
+ * (Phase 9, decision A). Every candidate comes from the AI resolver and an
+ * admin only accepts or rejects it, so "AI-assisted" is accurate; the wording
+ * deliberately stops short of calling the result verified.
  *
  * Unlike the unverified label this one is not carried in the payload — an
  * accepted resolution's `label` is `null` by schema — so the converter UI
  * reads it from here. It is still gated: nothing renders a fallback unless
  * `NEXT_PUBLIC_ENABLE_FALLBACK_PIPELINE` is on, and that defaults off.
  *
- * `__tests__/knownResolutions.test.ts` pins the marker.
+ * `__tests__/knownResolutions.test.ts` pins the exact strings.
  */
-export const TBD_ACCEPTED_LABEL: Bilingual = {
-  en: "TBD — Filled from a reviewed correction (wording pending review)",
-  bn: "TBD — পর্যালোচিত সংশোধন থেকে পূরণ করা হয়েছে (কপি পর্যালোচনার অপেক্ষায়)",
+export const FALLBACK_ACCEPTED_LABEL: Bilingual = {
+  en: "Accepted using AI-assisted fallback",
+  bn: "AI-সহায়ক বিকল্প পদ্ধতিতে গ্রহণ করা হয়েছে",
 };
-
-/** The label a `fallback_accepted` segment shows. Aliased to the draft until the copy review lands. */
-export const FALLBACK_ACCEPTED_LABEL: Bilingual = TBD_ACCEPTED_LABEL;
 
 export const knownResolutionSchema = z.object({
   /** The legacy sequence this resolves. Matches a `failedSequence` in `patterns`. */
