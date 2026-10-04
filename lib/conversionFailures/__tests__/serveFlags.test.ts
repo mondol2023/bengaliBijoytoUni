@@ -116,12 +116,15 @@ describe("isServeUnverifiedAiEnabled", () => {
     });
 
     it("has no NEXT_PUBLIC_ twin anywhere in the application source", () => {
+      // Tests are skipped: they never reach a bundle, and the bundle
+      // checker's own test names the twin as a fixture on purpose.
       const offenders: string[] = [];
       const walk = (dir: string) => {
         for (const entry of readdirSync(dir, { withFileTypes: true })) {
           const full = path.join(dir, entry.name);
-          if (entry.isDirectory()) walk(full);
-          else if (/\.(ts|tsx|mjs|js)$/.test(entry.name) && !full.endsWith("serveFlags.test.ts")) {
+          if (entry.isDirectory()) {
+            if (entry.name !== "__tests__") walk(full);
+          } else if (/\.(ts|tsx|mjs|js)$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
             if (readFileSync(full, "utf8").includes("NEXT_PUBLIC_SERVE_UNVERIFIED")) offenders.push(full);
           }
         }
