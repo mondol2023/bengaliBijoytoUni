@@ -106,8 +106,10 @@ service cloud.firestore {
     // conversion-failure intelligence pipeline (docs/conversion-failure-pipeline.md).
     // Written only by server routes (`/api/conversion-failures`,
     // `/api/admin/conversion-failures/*`) via firebase-admin. Stricter than
-    // `errorLogs`: admin-only read (not owner-or-admin), because
-    // `conversionFailures` carries the complete original conversion text —
+    // `errorLogs`: admin-only read (not owner-or-admin), because these
+    // collections aggregate conversion context across users — and
+    // `conversionFailures` occurrences written before the privacy bound
+    // still hold whole documents in `fullText` (new ones store none) —
     // this is a deliberate deviation from the owner-can-read-their-own
     // precedent used elsewhere.
     match /conversionFailures/{id} {

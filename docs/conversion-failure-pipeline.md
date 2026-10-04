@@ -386,6 +386,11 @@ resolveConversionFailure(...)            (lib/ai/resolveConversionFailure.ts —
         │       fresh pending claim → 409 CONFLICT_ERROR (a concurrent admin got there first)
         │
         ▼
+dailyCallBudget.reserve()   (lib/ai/costCap.ts — deployment-wide, one Firestore counter per UTC day)
+        │   day exhausted        → 429 RATE_LIMIT_ERROR, Retry-After 3600 ("provider_budget_exhausted")
+        │   counter unreachable  → refused, never "unlimited" ("provider_budget_unavailable")
+        │
+        ▼
 ConversionResolutionProvider.resolve(request, options)
         │
         ├── not configured (no API key)  → ProviderError "provider_not_configured"
@@ -393,7 +398,7 @@ ConversionResolutionProvider.resolve(request, options)
         └── configured
               │
               ▼
-        buildResolutionPrompt(request, options)   (lib/ai/promptBuilder.ts, versioned "v1")
+        buildResolutionPrompt(request, options)   (lib/ai/promptBuilder.ts, versioned "v2")
               │   only sends failedSequence + code points by default;
               │   context/fullText only if options.includeContext / includeFullText is set
               ▼
@@ -425,7 +430,7 @@ ConversionResolutionProvider.resolve(request, options)
   `lib/firebase/admin.ts`'s convention. Every module-level file that can see a key calls
   `assertServerOnly()` (see §8) before anything else runs.
 - **`lib/ai/promptBuilder.ts`** — the only place prompt text is built.
-  `CONVERSION_RESOLUTION_PROMPT_VERSION` (currently `"v1"`) is stamped onto every
+  `CONVERSION_RESOLUTION_PROMPT_VERSION` (currently `"v2"`) is stamped onto every
   `ConversionResolution` so a stored result is reproducible/auditable later. The system
   instruction explicitly frames the task as legacy-encoding→Unicode analysis, not
   translation/summarization/spelling-correction, and asks for a short user-safe
@@ -632,12 +637,23 @@ throws under a simulated `window`, and no client-reachable directory references
   SDK server-side.
 - `POST /api/conversion-failures` is rate-limited like `/api/error-logs` (`checkSharedRateLimit`,
   shared across Vercel instances through a Firestore window counter),
-  caps the number of failures accepted per request (`MAX_FAILURES_PER_REPORT`), and never
+  caps the number of failures accepted per request
+  (`CONVERSION_FAILURE_LIMITS.maxFailuresPerReport`: 50), and never
   trusts client-supplied `userId`/severity/timestamps.
 - `POST /api/admin/conversion-failures/{patternId}/resolve` is admin-only
   (`requireAdminUser`) and rate-limited per admin uid
   (`RESOLUTION_LIMITS.resolveRateLimit`: 20 calls / 10 minutes), since each call can cost
   real money.
+- On top of the per-admin limit, outbound provider calls are capped **deployment-wide per UTC
+  day** (`lib/ai/costCap.ts`): `DEFAULT_DAILY_CALL_BUDGET` is 100 (5 × the resolve rate limit),
+  overridable via the `AI_DAILY_CALL_BUDGET` env var. The count lives in one Firestore document
+  per day (`aiCallBudget/{yyyy-mm-dd}`), reserved transactionally, so it holds across Vercel
+  instances and cold starts. It is reserved only after the dedup claim succeeds, so a 409 or a
+  reused completed resolution never spends a unit; retries share the one reserved unit. It is a
+  **call** budget, not a money budget — nothing here knows a provider's price. It fails closed:
+  an exhausted day returns 429 (`provider_budget_exhausted`, `Retry-After: 3600`), and a zero,
+  negative or unparseable budget, or an unreachable counter (`provider_budget_unavailable`),
+  refuses the call rather than reading as "unlimited".
 - `POST /api/admin/conversion-failures/{patternId}/review` is likewise admin-only
   (`requireAdminUser`) and rate-limited per admin uid
   (`RESOLUTION_LIMITS.reviewRateLimit`: 60 calls / 10 minutes — looser than `resolveRateLimit`
@@ -657,7 +673,8 @@ throws under a simulated `window`, and no client-reachable directory references
 ## 9. Admin UI
 
 - `/admin/conversion-failures` — list of failure patterns (stat tiles: total patterns, total
-  occurrences, resolved count; filters by encoding/category/severity), modeled on the
+  occurrences, open and resolved counts; filters by failure category and status, plus a sort
+  control; each row badges its encoding), modeled on the
   existing `AdminErrorLog` route→hook→component triad. Explicit empty state before any data
   exists.
 - `/admin/conversion-failures/[patternId]` — pattern detail: recent occurrences (context

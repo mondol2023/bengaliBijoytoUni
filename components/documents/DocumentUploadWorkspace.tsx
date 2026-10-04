@@ -99,11 +99,9 @@ export function DocumentUploadWorkspace() {
           onChange={setTier}
           locked={isTierLocked}
           caption={
-            isTierLocked
-              ? "using your account tier"
-              : user
-                ? undefined
-                : "anonymous uploads are capped at Easy — sign in to use your account tier"
+            user
+              ? "saved to your account"
+              : "signed-out uploads are capped at Easy — sign in to use a higher tier"
           }
         />
       </motion.div>
