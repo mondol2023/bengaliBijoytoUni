@@ -135,9 +135,10 @@ describe("nothing writes expireAt into aiResolutions", () => {
     // their own documents (`costCap.ts` and `sharedRateLimit.ts` compute
     // it, `counterStore.ts` declares it, `sharedCounter.ts` writes it) — and `sharedCounter.ts`
     // refuses any collection outside `SHARED_COUNTER_COLLECTIONS`, which its
-    // own test pins as excluding `aiResolutions`. Any other file appearing
-    // here is a new place the field is being handled by hand, and worth a
-    // look.
+    // own test pins as excluding `aiResolutions`. The staging probe route
+    // stamps one on its own synthetic `stagingProbes` document and writes no
+    // other collection. Any other file appearing here is a new place the
+    // field is being handled by hand, and worth a look.
     const mentions: string[] = [];
     for (const dir of ["lib", "app", "features", "hooks", "components"]) {
       for (const file of listSources(path.join(REPO_ROOT, dir))) {
@@ -145,6 +146,7 @@ describe("nothing writes expireAt into aiResolutions", () => {
       }
     }
     expect(mentions.sort()).toStrictEqual([
+      "app/api/admin/firebase-identity/route.ts",
       "lib/ai/costCap.ts",
       "lib/conversionFailures/retention.ts",
       "lib/firebase/sharedCounter.ts",
