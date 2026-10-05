@@ -141,30 +141,6 @@ export function ComparisonWorkspace() {
         <TierSelector tier={tier} onChange={setTier} />
       </motion.div>
 
-      {/* Result leads: with long inputs it would otherwise sit far below the fold. */}
-      <AnimatePresence>
-        {result && (
-          <motion.section
-            key="result"
-            aria-label="Comparison result"
-            initial={{ opacity: 0, y: motionTokens.distance.sm }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: motionTokens.distance.sm }}
-            transition={springs.gentle}
-            className="sheet mt-6"
-          >
-            <div className="sheet-band">
-              <span className="plate-marker">Removed struck · added underlined</span>
-              {user && (
-                <SaveToHistoryButton key={`${result.mode}-${result.similarity}`} onSave={saveToHistory} />
-              )}
-            </div>
-            <DiffViewer result={result} />
-            <ComparisonStats result={result} />
-          </motion.section>
-        )}
-      </AnimatePresence>
-
       {/* One sheet, two galleys: source and target side by side, split by a hairline. */}
       <motion.section
         variants={itemVariants}
@@ -179,6 +155,32 @@ export function ComparisonWorkspace() {
           className="border-t border-border lg:border-l lg:border-t-0"
         />
       </motion.section>
+
+      {/* Result: the figures first, then the full diff. */}
+      <AnimatePresence>
+        {result && (
+          <motion.div
+            key="result"
+            initial={{ opacity: 0, y: motionTokens.distance.sm }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: motionTokens.distance.sm }}
+            transition={springs.gentle}
+          >
+            <section aria-label="Comparison figures" className="sheet mt-6 [&>*]:border-t-0">
+              <ComparisonStats result={result} />
+            </section>
+            <section aria-label="Comparison result" className="sheet mt-6">
+              <div className="sheet-band">
+                <span className="plate-marker">Removed struck · added underlined</span>
+                {user && (
+                  <SaveToHistoryButton key={`${result.mode}-${result.similarity}`} onSave={saveToHistory} />
+                )}
+              </div>
+              <DiffViewer result={result} />
+            </section>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {!result && (
@@ -198,6 +200,7 @@ export function ComparisonWorkspace() {
           </motion.p>
         )}
       </AnimatePresence>
+
     </motion.main>
   );
 }
