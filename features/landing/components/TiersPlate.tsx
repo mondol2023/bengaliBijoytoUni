@@ -13,7 +13,9 @@ const CEILING = Math.max(...TIERS.map((tier) => tier.maxNonWhitespaceChars));
 const IN_PRACTICE: Record<string, string> = {
   easy: "A letter, a form, a page or two of a report.",
   medium: "A chapter, a long article, a short contract.",
+  pro: "A long report or a whole manuscript section.",
   expert: "A full document in one pass, without splitting it.",
+  ultra: "A book-length manuscript in a single conversion.",
 };
 
 const row: Variants = {
@@ -33,7 +35,7 @@ export function TiersPlate() {
       <PlateHead
         headingId="tiers-heading"
         marker="Plate 05"
-        heading="Three limits. All three free."
+        heading="Five limits. All five free."
         standfirst="The only thing a tier changes is how much text one conversion may carry, counted in non-whitespace characters. There is no paid plan, no trial and no card — new accounts start on Easy, and an administrator can raise it."
       />
 

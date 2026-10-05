@@ -17,7 +17,7 @@ import { FAILURE_CATEGORIES } from "@/features/converter/engine/classify";
  * write conflict.
  */
 
-const tierSchema = z.enum(["easy", "medium", "expert"]);
+const tierSchema = z.enum(["easy", "medium", "pro", "expert", "ultra"]);
 const fileFormatSchema = z.enum(["pdf", "doc", "docx", "txt"]);
 
 /**
@@ -86,7 +86,13 @@ export type UsageRecord = z.infer<typeof usageRecordSchema>;
 /** Admin-editable defaults layered over `features/usage/tierConfig`'s hard-coded fallback (Phase 7). */
 const tierOverrideSchema = z.object({ maxNonWhitespaceChars: z.number().int().positive() }).optional();
 export const systemConfigSchema = z.object({
-  tierOverrides: z.object({ easy: tierOverrideSchema, medium: tierOverrideSchema, expert: tierOverrideSchema }),
+  tierOverrides: z.object({
+    easy: tierOverrideSchema,
+    medium: tierOverrideSchema,
+    pro: tierOverrideSchema,
+    expert: tierOverrideSchema,
+    ultra: tierOverrideSchema,
+  }),
   /** Encoding ids (`listEncodings()`) offered to users; missing/empty means "all registered encodings". */
   enabledEncodings: z.array(z.string()).optional(),
   maxUploadSizeBytes: z.number().int().positive().optional(),
@@ -418,7 +424,9 @@ export const adminStatsTotalsSchema = z.object({
   usersByTier: z.object({
     easy: z.number().int().nonnegative(),
     medium: z.number().int().nonnegative(),
+    pro: z.number().int().nonnegative(),
     expert: z.number().int().nonnegative(),
+    ultra: z.number().int().nonnegative(),
   }),
   updatedAt: z.string(),
 });

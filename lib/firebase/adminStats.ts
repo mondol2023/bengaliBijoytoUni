@@ -117,7 +117,7 @@ const EMPTY_TOTALS: AdminStatsTotals = {
   comparisonsByMode: { word: 0, paragraph: 0 },
   documentsByFormat: { pdf: 0, docx: 0, doc: 0, txt: 0 },
   conversionsByEncoding: {},
-  usersByTier: { easy: 0, medium: 0, expert: 0 },
+  usersByTier: { easy: 0, medium: 0, pro: 0, expert: 0, ultra: 0 },
   updatedAt: new Date(0).toISOString(),
 };
 

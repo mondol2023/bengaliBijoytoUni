@@ -6,7 +6,7 @@
  * Deliberately word-bag based (a Sørensen–Dice coefficient over word
  * multisets), not a character-level edit-distance metric: edit distance is
  * O(n·m), and paragraph-mode chunks can be as large as a whole tier's
- * character cap (up to 25,000 for "expert") — an O(n²) comparison at that
+ * character cap (up to 75,000 for "ultra") — an O(n²) comparison at that
  * size is a real latency/DoS risk. The word-bag approach is O(n) in the
  * number of words. The known tradeoff: a single-word typo fix (e.g. "teh" →
  * "the") shares no whole words, so it scores as unrelated rather than as one

@@ -10,7 +10,7 @@ import { DEFAULT_TIER } from "@/features/usage/tierConfig";
 
 export const runtime = "nodejs";
 
-const tierBodySchema = z.object({ tier: z.enum(["easy", "medium", "expert"]) });
+const tierBodySchema = z.object({ tier: z.enum(["easy", "medium", "pro", "expert", "ultra"]) });
 
 const fail = failResponder("api/users/me");
 
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   const parsedBody = tierBodySchema.safeParse(json);
   if (!parsedBody.success) {
     return fail(
-      AppErrors.validation('Expected { "tier": "easy" | "medium" | "expert" }.', { details: { field: "tier" } }),
+      AppErrors.validation('Expected { "tier": "easy" | "medium" | "pro" | "expert" | "ultra" }.', { details: { field: "tier" } }),
     );
   }
 

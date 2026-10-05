@@ -12,7 +12,7 @@ import { ProofSlip } from "./ProofSlip";
 const FACTS = [
   "2 legacy encodings",
   "4 file formats",
-  "3,000–25,000 characters, free",
+  "3,000–75,000 characters, free",
   "Text converts in this tab",
 ];
 

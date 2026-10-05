@@ -141,23 +141,9 @@ export function ComparisonWorkspace() {
         <TierSelector tier={tier} onChange={setTier} />
       </motion.div>
 
-      {/* One sheet, two galleys: source and target side by side, split by a hairline. */}
-      <motion.section
-        variants={itemVariants}
-        aria-label="Texts to compare"
-        className="sheet mt-6 grid lg:grid-cols-2"
-      >
-        <ComparisonInputPanel label="Source" side={source} usage={sourceUsage} />
-        <ComparisonInputPanel
-          label="Target"
-          side={target}
-          usage={targetUsage}
-          className="border-t border-border lg:border-l lg:border-t-0"
-        />
-      </motion.section>
-
-      <AnimatePresence mode="wait">
-        {result ? (
+      {/* Result leads: with long inputs it would otherwise sit far below the fold. */}
+      <AnimatePresence>
+        {result && (
           <motion.section
             key="result"
             aria-label="Comparison result"
@@ -176,7 +162,26 @@ export function ComparisonWorkspace() {
             <DiffViewer result={result} />
             <ComparisonStats result={result} />
           </motion.section>
-        ) : (
+        )}
+      </AnimatePresence>
+
+      {/* One sheet, two galleys: source and target side by side, split by a hairline. */}
+      <motion.section
+        variants={itemVariants}
+        aria-label="Texts to compare"
+        className="sheet mt-6 grid lg:grid-cols-2"
+      >
+        <ComparisonInputPanel label="Source" side={source} usage={sourceUsage} />
+        <ComparisonInputPanel
+          label="Target"
+          side={target}
+          usage={targetUsage}
+          className="border-t border-border lg:border-l lg:border-t-0"
+        />
+      </motion.section>
+
+      <AnimatePresence>
+        {!result && (
           <motion.p
             key="empty"
             initial={{ opacity: 0 }}

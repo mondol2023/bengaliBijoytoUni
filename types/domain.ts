@@ -2,7 +2,7 @@
 
 export type UserRole = "user" | "admin";
 
-export type TierId = "easy" | "medium" | "expert";
+export type TierId = "easy" | "medium" | "pro" | "expert" | "ultra";
 
 export type InputType = "text" | "file";
 

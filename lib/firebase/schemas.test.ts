@@ -208,7 +208,7 @@ describe("parseFirestoreDoc", () => {
       comparisonsByMode: { word: 2, paragraph: 0 },
       documentsByFormat: { pdf: 2, docx: 1, doc: 0, txt: 1 },
       conversionsByEncoding: { bijoy: 7, sutonny: 3 },
-      usersByTier: { easy: 2, medium: 1, expert: 0 },
+      usersByTier: { easy: 2, medium: 1, pro: 0, expert: 0, ultra: 0 },
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
     expect(result.ok).toBe(true);
@@ -226,7 +226,7 @@ describe("parseFirestoreDoc", () => {
       comparisonsByMode: { word: 2, paragraph: 0 },
       documentsByFormat: { pdf: 2, docx: 1, doc: 0, txt: 1 },
       conversionsByEncoding: {},
-      usersByTier: { easy: 2, medium: 1, expert: 0 },
+      usersByTier: { easy: 2, medium: 1, pro: 0, expert: 0, ultra: 0 },
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
     expect(result.ok).toBe(false);

@@ -22,7 +22,7 @@ async function auditSafely(input: Parameters<typeof writeAuditLog>[0]) {
 }
 
 const bodySchema = z.object({
-  tier: z.enum(["easy", "medium", "expert"]).optional(),
+  tier: z.enum(["easy", "medium", "pro", "expert", "ultra"]).optional(),
   disabled: z.boolean().optional(),
   /** `null` clears an existing per-user usage override; a positive number sets one; omit to leave it untouched. */
   usageOverrideMaxChars: z.number().int().positive().nullable().optional(),

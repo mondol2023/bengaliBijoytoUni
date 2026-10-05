@@ -17,7 +17,13 @@ const tierOverrideSchema = z.object({ maxNonWhitespaceChars: z.number().int().po
 
 const bodySchema = z.object({
   tierOverrides: z
-    .object({ easy: tierOverrideSchema, medium: tierOverrideSchema, expert: tierOverrideSchema })
+    .object({
+      easy: tierOverrideSchema,
+      medium: tierOverrideSchema,
+      pro: tierOverrideSchema,
+      expert: tierOverrideSchema,
+      ultra: tierOverrideSchema,
+    })
     .optional(),
   enabledEncodings: z.array(z.string()).optional(),
   maxUploadSizeBytes: z.number().int().positive().optional(),

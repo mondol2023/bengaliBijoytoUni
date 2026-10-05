@@ -21,7 +21,9 @@ function toFormState(config: SystemConfig, availableEncodingIds: string[]): Form
     tierOverrides: {
       easy: config.tierOverrides.easy?.maxNonWhitespaceChars.toString() ?? "",
       medium: config.tierOverrides.medium?.maxNonWhitespaceChars.toString() ?? "",
+      pro: config.tierOverrides.pro?.maxNonWhitespaceChars.toString() ?? "",
       expert: config.tierOverrides.expert?.maxNonWhitespaceChars.toString() ?? "",
+      ultra: config.tierOverrides.ultra?.maxNonWhitespaceChars.toString() ?? "",
     },
     // No `enabledEncodings` override means "all enabled" — represented the same way here.
     enabledEncodings: new Set(config.enabledEncodings ?? availableEncodingIds),
@@ -63,7 +65,9 @@ export function AdminConfigForm() {
     const tierOverrides = {
       easy: form.tierOverrides.easy.trim() === "" ? null : { maxNonWhitespaceChars: Number(form.tierOverrides.easy) },
       medium: form.tierOverrides.medium.trim() === "" ? null : { maxNonWhitespaceChars: Number(form.tierOverrides.medium) },
+      pro: form.tierOverrides.pro.trim() === "" ? null : { maxNonWhitespaceChars: Number(form.tierOverrides.pro) },
       expert: form.tierOverrides.expert.trim() === "" ? null : { maxNonWhitespaceChars: Number(form.tierOverrides.expert) },
+      ultra: form.tierOverrides.ultra.trim() === "" ? null : { maxNonWhitespaceChars: Number(form.tierOverrides.ultra) },
     };
     const maxUploadSizeBytes =
       form.maxUploadSizeMB.trim() === "" ? undefined : Math.round(Number(form.maxUploadSizeMB) * 1024 * 1024);
@@ -96,7 +100,7 @@ export function AdminConfigForm() {
       <section className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4">
         <h3 className="text-sm font-semibold text-foreground/80">Tier limit overrides</h3>
         <p className="text-xs text-foreground/50">Leave blank to use the built-in default for that tier.</p>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {listTiers().map((tier) => (
             <label key={tier.id} className="flex flex-col gap-1 text-sm">
               <span className="font-medium">

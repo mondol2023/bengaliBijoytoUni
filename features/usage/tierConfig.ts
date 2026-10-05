@@ -16,8 +16,10 @@ export interface TierDefinition {
  */
 export const TIERS: Record<TierId, TierDefinition> = {
   easy: { id: "easy", label: "Easy", maxNonWhitespaceChars: 3000 },
-  medium: { id: "medium", label: "Medium", maxNonWhitespaceChars: 6000 },
-  expert: { id: "expert", label: "Expert", maxNonWhitespaceChars: 25000 },
+  medium: { id: "medium", label: "Medium", maxNonWhitespaceChars: 8000 },
+  pro: { id: "pro", label: "Pro", maxNonWhitespaceChars: 20000 },
+  expert: { id: "expert", label: "Expert", maxNonWhitespaceChars: 50000 },
+  ultra: { id: "ultra", label: "Ultra", maxNonWhitespaceChars: 75000 },
 };
 
 export const DEFAULT_TIER: TierId = "easy";
