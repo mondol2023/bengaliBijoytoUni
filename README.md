@@ -51,7 +51,7 @@ Mapping accuracy is **iteratively converging, not finished** — rare conjuncts 
 
 - **Text converter** (`/converter`) — live, debounced conversion with encoding auto-detect/override, copy/download/clear, and non-whitespace character counting against usage tiers.
 - **Document processing** (`/documents`) — upload `.pdf` (via `unpdf`), `.docx` (via `mammoth`), `.txt`, or `.doc` (via `word-extractor`, explicitly best-effort — see [Problems we faced](#problems-we-faced-and-how-we-handled-them)). Extracted text flows through the exact same conversion engine as manual input.
-- **Comparison/diff** (`/compare`) — word- and paragraph-level diff between two text or file inputs, with similarity scoring and a structured (non-HTML-string) diff result.
+- **Comparison/diff** (`/compare`) — word- and paragraph-level diff between two text or file inputs, with similarity scoring and a structured (non-HTML-string) diff result. Misspelled **English** words on either side get a wavy underline in the diff, a "Typos in / out" figure and a summary with suggestions (British and US spelling both accepted; case/bank/land references like `123/2020` or `A/C 45/B` and legacy-encoded text are never flagged; toggle in the settings row).
 - **Usage tiers** — five free tiers gating characters per conversion, not features: Easy (3,000), Medium (8,000), Pro (20,000), Expert (50,000), Ultra (75,000) non-whitespace characters. No payment gating exists behind any of them.
 - **Accounts** — Email/Password and Google sign-in via Firebase Auth; enables saved conversion/comparison history. Not required to use the converter.
 - **Failure log & feedback** — a visible log of every kind of conversion/extraction failure (client-side conversion errors, unmapped letters, server-side file-extraction failures), plus a feedback form (anonymous or signed-in) that writes to Firestore for triage.
@@ -87,7 +87,7 @@ app/                     Next.js App Router routes and API handlers
                            admin/*, auth/session, error-logs, feedback, users/me)
 features/                Feature-scoped logic paired with its own tests
   converter/               Conversion engine, encodings, constants
-  comparison/               Diff/similarity engine
+  comparison/               Diff/similarity engine, English spellcheck (spelling/)
   documents/                 Extraction config
   usage/                     Tier config & usage enforcement
   landing/                    Landing-page specimen components
@@ -139,6 +139,7 @@ npm run start        # run the production build
 npm run lint          # ESLint
 npm run test           # run the test suite once (Vitest)
 npm run test:watch      # run the test suite in watch mode
+npm run dict:sync        # re-copy the Hunspell spelling dictionaries into public/dictionaries/
 ```
 
 ## Testing
@@ -188,6 +189,8 @@ Disclosed here rather than left implicit:
 - **The shared rate limit degrades to per-instance when Firestore cannot answer.** The deployment is Vercel (multi-instance), so limits are held in a shared Firestore counter. If Firebase is not configured, or Firestore errors, each instance falls back to its own in-memory window: the old, weaker bound, never no bound. The AI daily call budget makes the opposite choice and refuses. See `docs/threat-model-public-failure-endpoints.md` §3.
 - **The CSP is pragmatic, not nonce-strict** (`'unsafe-inline'` on `script-src`/`style-src`), because Next.js's App Router streams hydration data through inline `<script>` tags and several components set inline `style` attributes. A nonce-based CSP would need per-request nonce plumbing through middleware and every layout.
 - **There is no true "before" preview of the raw legacy-encoded text** (see [Problems we faced](#problems-we-faced-and-how-we-handled-them)) — only the converted Unicode output is rendered.
+
+- **Spellcheck covers English only and is a heuristic about *which* words to judge.** A capitalized word mid-sentence is treated as a name, a chunk containing a digit is treated as a reference, and a pure-ASCII legacy snippet with no marker characters looks like English. The deliberate list is in `docs/superpowers/specs/2026-10-05-compare-spellcheck-design.md`. The dictionaries (~1.1MB, licence `(MIT AND BSD)`) are fetched on first use and cached for a day.
 
 ## Roadmap
 

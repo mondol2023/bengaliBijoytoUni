@@ -1,7 +1,18 @@
 "use client";
 
-import { ReadoutStrip } from "@/components/ui/ReadoutStrip";
+import { ReadoutStrip, type Readout } from "@/components/ui/ReadoutStrip";
 import type { DiffResult } from "@/features/comparison/engine/diffEngine";
+import type { SideSpelling } from "@/features/comparison/spelling/types";
+import type { SpellcheckStatus } from "@/hooks/useSpellcheck";
+
+/** One side's spelling figure: a count, or why there is no count. */
+function typoReadout(label: string, side: SideSpelling | null, status: SpellcheckStatus): Readout {
+  if (status === "unavailable") return { label, value: "n/a" };
+  if (!side) return { label, value: "…" };
+  if (side.skipped) return { label, value: "skipped" };
+  const total = side.misspellings.length;
+  return { label, value: total.toLocaleString(), tone: total > 0 ? "warning" : "ok" };
+}
 
 /**
  * The comparison's read-out row — the same instrument strip as the landing
@@ -12,7 +23,14 @@ import type { DiffResult } from "@/features/comparison/engine/diffEngine";
  * point of view, a modification is both something removed and something
  * added; "Modified" exists to show how many of those are paired edits.
  */
-export function ComparisonStats({ result }: { result: DiffResult }) {
+export function ComparisonStats({
+  result,
+  spelling,
+}: {
+  result: DiffResult;
+  /** Omit (or pass status "off") to leave the spelling figures out. */
+  spelling?: { status: SpellcheckStatus; source: SideSpelling | null; target: SideSpelling | null };
+}) {
   const additionsCount = result.additions.length + result.modifications.length;
   const removalsCount = result.removals.length + result.modifications.length;
 
@@ -27,6 +45,12 @@ export function ComparisonStats({ result }: { result: DiffResult }) {
         { label: "Added", value: additionsCount.toLocaleString() },
         { label: "Removed", value: removalsCount.toLocaleString() },
         { label: "Modified", value: result.modifications.length.toLocaleString() },
+        ...(spelling && spelling.status !== "off"
+          ? [
+              typoReadout("Typos in", spelling.source, spelling.status),
+              typoReadout("Typos out", spelling.target, spelling.status),
+            ]
+          : []),
       ]}
     />
   );

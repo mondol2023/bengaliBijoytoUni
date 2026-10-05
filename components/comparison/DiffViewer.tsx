@@ -1,7 +1,49 @@
 "use client";
 
 import type { DiffResult } from "@/features/comparison/engine/diffEngine";
+import { splitByMarks } from "@/features/comparison/spelling/annotate";
+import type { SegmentMark } from "@/features/comparison/spelling/types";
 import { cn } from "@/lib/utils/cn";
+
+/**
+ * A segment's text with its misspelled English words wavy-underlined. The
+ * wave sits lower than the diff's own underline so the two never fuse, and
+ * meaning is carried by an sr-only prefix and a title, not by colour alone.
+ */
+function MarkedText({
+  value,
+  marks,
+  suggestions,
+}: {
+  value: string;
+  marks: SegmentMark[] | undefined;
+  suggestions: Record<string, string[]> | undefined;
+}) {
+  if (!marks || marks.length === 0) return <>{value}</>;
+
+  return (
+    <>
+      {splitByMarks(value, marks).map((piece, index) => {
+        if (!piece.mark) return <span key={index}>{piece.text}</span>;
+        const options = suggestions?.[piece.mark.word.toLowerCase()];
+        return (
+          <span
+            key={index}
+            title={
+              options && options.length > 0
+                ? `Possible misspelling — did you mean: ${options.join(", ")}?`
+                : "Possible misspelling"
+            }
+            className="bg-warning/10 underline decoration-warning decoration-wavy decoration-1 underline-offset-[7px]"
+          >
+            <span className="sr-only">Possible misspelling: </span>
+            {piece.text}
+          </span>
+        );
+      })}
+    </>
+  );
+}
 
 /**
  * Renders `result.segments` — already in original document order — as one
@@ -11,7 +53,16 @@ import { cn } from "@/lib/utils/cn";
  * through, with an sr-only (word mode) or visible mono (paragraph mode) label
  * on top of the green/red ledger colours.
  */
-export function DiffViewer({ result }: { result: DiffResult }) {
+export function DiffViewer({
+  result,
+  marks,
+  suggestions,
+}: {
+  result: DiffResult;
+  /** Per segment (same order as `result.segments`), the misspelled words inside it. */
+  marks?: SegmentMark[][];
+  suggestions?: Record<string, string[]>;
+}) {
   if (result.segments.length === 0) {
     return <p className="p-4 text-sm text-foreground/70">Nothing to show — both sides are empty.</p>;
   }
@@ -48,7 +99,7 @@ export function DiffViewer({ result }: { result: DiffResult }) {
                       : "text-danger line-through decoration-danger decoration-1"),
                 )}
               >
-                {segment.value}
+                <MarkedText value={segment.value} marks={marks?.[index]} suggestions={suggestions} />
               </p>
             </div>
           );
@@ -65,7 +116,11 @@ export function DiffViewer({ result }: { result: DiffResult }) {
     >
       {result.segments.map((segment, index) => {
         if (segment.type === "unchanged") {
-          return <span key={index}>{segment.value}</span>;
+          return (
+            <span key={index}>
+              <MarkedText value={segment.value} marks={marks?.[index]} suggestions={suggestions} />
+            </span>
+          );
         }
 
         const isAdded = segment.type === "added";
@@ -79,7 +134,7 @@ export function DiffViewer({ result }: { result: DiffResult }) {
             }
           >
             <span className="sr-only">{isAdded ? "Added: " : "Removed: "}</span>
-            {segment.value}
+            <MarkedText value={segment.value} marks={marks?.[index]} suggestions={suggestions} />
           </span>
         );
       })}

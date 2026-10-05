@@ -66,7 +66,17 @@ const nextConfig: NextConfig = {
     root: __dirname,
   },
   async headers() {
-    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
+    return [
+      { source: "/:path*", headers: SECURITY_HEADERS },
+      {
+        // The ~1MB Hunspell spelling dictionaries (see `npm run dict:sync`). Next serves `public/`
+        // files with `max-age=0`, which would re-validate them on every Compare visit; they change
+        // only when the npm packages are bumped, so a day of caching plus a week of
+        // stale-while-revalidate is safe and lets a returning visitor skip the download entirely.
+        source: "/dictionaries/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }],
+      },
+    ];
   },
 };
 

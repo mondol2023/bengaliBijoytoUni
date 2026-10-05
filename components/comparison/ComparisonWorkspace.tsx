@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { RotateCcw, Sparkles } from "lucide-react";
 import { MicroButton } from "@/components/ui/MicroButton";
@@ -9,12 +10,15 @@ import { TierSelector } from "@/components/converter/TierSelector";
 import { ComparisonInputPanel } from "./ComparisonInputPanel";
 import { ComparisonStats } from "./ComparisonStats";
 import { DiffViewer } from "./DiffViewer";
+import { SpellingSummary } from "./SpellingSummary";
 import { SaveToHistoryButton } from "@/components/history/SaveToHistoryButton";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useComparison } from "@/hooks/useComparison";
+import { useSpellcheck } from "@/hooks/useSpellcheck";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { SAMPLE_SOURCE, SAMPLE_TARGET } from "@/features/comparison/sampleText";
 import type { DiffMode } from "@/features/comparison/engine/diffEngine";
+import { annotateSegments } from "@/features/comparison/spelling/annotate";
 import { motionTokens, springs, staggerChildren, staggerDelayChildren } from "@/lib/motion/tokens";
 import type { SafeErrorResponse } from "@/lib/errors/handlers";
 
@@ -49,8 +53,22 @@ export function ComparisonWorkspace() {
     targetUsage,
     isPending,
     result,
+    comparedTexts,
     clear,
   } = useComparison();
+  const spelling = useSpellcheck(comparedTexts);
+
+  // Marks must be computed from the exact texts the diff ran on (`comparedTexts`),
+  // not the live input, or their offsets would drift from the segments.
+  const spellingMarks = useMemo(() => {
+    if (!result || !comparedTexts || !spelling.checker || !spelling.source || !spelling.target) return undefined;
+    return annotateSegments(
+      result,
+      { text: comparedTexts.source, spelling: spelling.source },
+      { text: comparedTexts.target, spelling: spelling.target },
+      spelling.checker,
+    );
+  }, [result, comparedTexts, spelling.checker, spelling.source, spelling.target]);
 
   function loadSample() {
     source.setMode("text");
@@ -109,7 +127,7 @@ export function ComparisonWorkspace() {
         <ToolHead
           title="Compare two texts"
           marker={statusMarker}
-          standfirst="Paste or upload two versions — legacy or Unicode — and every word that differs is marked: removed words struck through, added words underlined."
+          standfirst="Paste or upload two versions — legacy or Unicode — and every word that differs is marked: removed words struck through, added words underlined. English words that look misspelled get a wavy underline."
         />
       </motion.div>
 
@@ -137,6 +155,16 @@ export function ComparisonWorkspace() {
           >
             Clear
           </MicroButton>
+          <span aria-hidden className="mx-1 hidden h-4 w-px bg-border sm:block" />
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={spelling.enabled}
+              onChange={(event) => spelling.setEnabled(event.target.checked)}
+              className="h-4 w-4 shrink-0 accent-[var(--accent)]"
+            />
+            Check English spelling
+          </label>
         </div>
         <TierSelector tier={tier} onChange={setTier} />
       </motion.div>
@@ -167,16 +195,24 @@ export function ComparisonWorkspace() {
             transition={springs.gentle}
           >
             <section aria-label="Comparison figures" className="sheet mt-6 [&>*]:border-t-0">
-              <ComparisonStats result={result} />
+              <ComparisonStats result={result} spelling={spelling} />
             </section>
+            <SpellingSummary
+              status={spelling.status}
+              source={spelling.source}
+              target={spelling.target}
+              suggestions={spelling.suggestions}
+            />
             <section aria-label="Comparison result" className="sheet mt-6">
               <div className="sheet-band">
-                <span className="plate-marker">Removed struck · added underlined</span>
+                <span className="plate-marker">
+                  Removed struck · added underlined{spelling.enabled ? " · misspelled wavy" : ""}
+                </span>
                 {user && (
                   <SaveToHistoryButton key={`${result.mode}-${result.similarity}`} onSave={saveToHistory} />
                 )}
               </div>
-              <DiffViewer result={result} />
+              <DiffViewer result={result} marks={spellingMarks} suggestions={spelling.suggestions} />
             </section>
           </motion.div>
         )}

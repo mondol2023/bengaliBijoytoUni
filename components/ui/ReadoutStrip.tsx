@@ -32,7 +32,11 @@ export function ReadoutStrip({
     <dl
       className={cn(
         "grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3",
-        readouts.length > 4 ? "sm:grid-cols-3 lg:grid-cols-6" : "sm:grid-cols-4",
+        readouts.length > 6
+          ? "sm:grid-cols-4"
+          : readouts.length > 4
+            ? "sm:grid-cols-3 lg:grid-cols-6"
+            : "sm:grid-cols-4",
         className,
       )}
     >

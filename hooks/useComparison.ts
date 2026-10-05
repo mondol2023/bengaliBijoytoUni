@@ -20,6 +20,12 @@ export interface UseComparisonResult {
   targetUsage: UsageCheck;
   isPending: boolean;
   result: DiffResult | null;
+  /**
+   * The exact strings `result` was computed from (the debounced values), or
+   * null when there is no result. Anything that must line up with the diff
+   * by offset — the spellcheck marks — has to use these, not `source.text`.
+   */
+  comparedTexts: { source: string; target: string } | null;
   canCompare: boolean;
   clear: () => void;
 }
@@ -55,6 +61,11 @@ export function useComparison(initialTier: TierId = "easy"): UseComparisonResult
     return compareText(diffMode, debouncedSourceText, debouncedTargetText);
   }, [canCompare, diffMode, debouncedSourceText, debouncedTargetText]);
 
+  const comparedTexts = useMemo(
+    () => (result ? { source: debouncedSourceText, target: debouncedTargetText } : null),
+    [result, debouncedSourceText, debouncedTargetText],
+  );
+
   function clear() {
     source.clear();
     target.clear();
@@ -71,6 +82,7 @@ export function useComparison(initialTier: TierId = "easy"): UseComparisonResult
     targetUsage,
     isPending,
     result,
+    comparedTexts,
     canCompare,
     clear,
   };

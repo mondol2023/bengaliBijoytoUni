@@ -167,6 +167,30 @@ working "Resolve with Gemini/OpenAI" and accept/reject controls via
 `docs/conversion-failure-pipeline.md` said the UI was unbuilt; that was stale. See
 `docs/conversion-failure-pipeline.md` §7.3 for the one thing that genuinely isn't built.
 
+### Compare page: English spellcheck
+
+`features/comparison/spelling/` (pure TS, same rules as the conversion engine: no React, no Node
+core modules) + `hooks/useSpellcheck.ts` + `components/comparison/SpellingSummary.tsx`. Full
+design and the deliberate trade-offs: `docs/superpowers/specs/2026-10-05-compare-spellcheck-design.md`.
+Things a future session would otherwise re-learn the hard way:
+
+- **Compare input is full of references** — case numbers, bank bills, land records (`123/2020`,
+  `Dag 45/B`, `A/C 0012-3456`, `Rs.5000/-`). `tokenize.ts` skips any whitespace chunk containing a
+  digit or a code character, and only checks parts of 4+ letters in a letters-only `a/b` chunk.
+  Don't "simplify" that into a plain word regex; `spelling.test.ts` has the cases.
+- **Legacy Bijoy text is Latin-looking gibberish**, so `legacyGate.ts` skips such a side. Don't
+  swap in `detectEncoding` for this: it reports legacy-range coverage 1 on text with no high
+  characters, so ordinary English scores as a confident Bijoy match.
+- **Dictionaries are static files**, not imports: `dictionary-en`/`dictionary-en-gb` read their
+  data with `node:fs` and cannot be bundled for the browser. `npm run dict:sync` copies them to
+  `public/dictionaries/`; the app fetches them lazily (dynamic `import()` of `loadChecker.ts`, so
+  `nspell` stays out of the initial bundle). British **and** US spellings are both accepted.
+- The checker is injected (`SpellChecker`), so engine tests use a fake dictionary; only
+  `spellingDictionary.test.ts` loads the real files.
+- Diff marks: word mode maps whole-text findings onto segments by offset (so a reference split
+  across a diff boundary keeps its context); paragraph mode checks each segment on its own.
+  `useComparison` exposes `comparedTexts` so offsets always match the diff's inputs.
+
 ### Route/feature layout
 
 `app/` is routes + API handlers only; real logic lives in `features/<domain>/` (paired with

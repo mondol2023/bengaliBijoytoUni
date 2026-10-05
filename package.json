@@ -15,7 +15,8 @@
     "scan:secrets:history": "node scripts/secretScan.mjs --history",
     "check:client-flags": "node scripts/checkClientFlags.mjs",
     "check:release-artifact": "node scripts/checkReleaseArtifact.mjs",
-    "staging:firebase": "node --env-file-if-exists=.env.staging.local scripts/stagingFirebase.mjs"
+    "staging:firebase": "node --env-file-if-exists=.env.staging.local scripts/stagingFirebase.mjs",
+    "dict:sync": "node scripts/sync-dictionaries.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
@@ -30,6 +31,7 @@
     "mammoth": "^1.12.3",
     "motion": "^13.2.0",
     "next": "16.3.5",
+    "nspell": "^2.1.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^3.10.1",
@@ -42,9 +44,12 @@
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/nspell": "^2.1.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.186.0",
+    "dictionary-en": "^4.0.0",
+    "dictionary-en-gb": "^3.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
