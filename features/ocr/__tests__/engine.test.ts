@@ -165,6 +165,161 @@ describe("createOcrEngine", () => {
     await engine.dispose();
     release();
     expect((await pending).ok).toBe(false);
+    await tick();
     expect(fake.workers.every((w) => w.terminated)).toBe(true);
+  });
+});
+
+/**
+ * tesseract.js never rejects a job whose worker was terminated or crashed — the promise
+ * simply never settles. These fakes do the same, so the engine must not wait on them.
+ */
+describe("createOcrEngine hardening", () => {
+  function hangingFactory() {
+    const workers: FakeWorker[] = [];
+    const factory: WorkerFactory = async (lang) => {
+      const worker: FakeWorker = {
+        lang,
+        terminated: false,
+        calls: 0,
+        recognize() {
+          worker.calls++;
+          return new Promise(() => undefined);
+        },
+        async terminate() {
+          worker.terminated = true;
+        },
+      };
+      workers.push(worker);
+      return worker;
+    };
+    return { factory, workers };
+  }
+
+  it("settles a pass that is in flight when the engine is disposed", async () => {
+    const fake = hangingFactory();
+    const engine = createOcrEngine(fake.factory, { recognizeTimeoutMs: 60_000 });
+    const pending = engine.recognize(IMAGE, "ben");
+    await tick();
+    await engine.dispose();
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toMatch(/stopped/i);
+    expect(fake.workers[0].terminated).toBe(true);
+  });
+
+  it("gives up on a pass that never answers, and replaces its worker", async () => {
+    const fake = hangingFactory();
+    const engine = createOcrEngine(fake.factory, { recognizeTimeoutMs: 20 });
+    const result = await engine.recognize(IMAGE, "ben");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toMatch(/took too long/i);
+      expect(String(result.error.debug)).toMatch(/timed out/);
+    }
+    expect(fake.workers[0].terminated).toBe(true);
+    await engine.recognize(IMAGE, "ben");
+    expect(fake.workers).toHaveLength(2);
+  });
+
+  it("gives up on a worker that never finishes starting, and terminates it if it turns up later", async () => {
+    const fake = fakeFactory();
+    let release!: () => void;
+    let calls = 0;
+    const slow: WorkerFactory = async (lang) => {
+      calls++;
+      if (calls === 1) await new Promise<void>((resolve) => (release = resolve));
+      return fake.factory(lang);
+    };
+    const engine = createOcrEngine(slow, { startTimeoutMs: 20 });
+    const first = await engine.warmUp("ben");
+    expect(first.ok).toBe(false);
+    if (!first.ok) expect(String(first.error.debug)).toMatch(/timed out/);
+
+    // The slot it held is free again.
+    expect((await engine.recognize(IMAGE, "ben")).ok).toBe(true);
+
+    release();
+    await tick();
+    expect(fake.workers).toHaveLength(2);
+    expect(fake.workers[0].terminated).toBe(false);
+    expect(fake.workers[1].terminated).toBe(true);
+  });
+
+  it("stops trying to start a language after repeated failures, and fails fast instead", async () => {
+    let attempts = 0;
+    const broken: WorkerFactory = async () => {
+      attempts++;
+      throw new Error("traineddata 404");
+    };
+    const engine = createOcrEngine(broken, { maxStartAttempts: 2 });
+    for (let i = 0; i < 5; i++) {
+      const result = await engine.recognize(IMAGE, "ben+eng");
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toMatch(/could not start/);
+    }
+    expect(attempts).toBe(2);
+  });
+
+  it("forgets earlier start failures once a worker starts", async () => {
+    const fake = fakeFactory();
+    let attempts = 0;
+    const flaky: WorkerFactory = async (lang) => {
+      attempts++;
+      if (attempts === 1 || attempts === 3) throw new Error("network blip");
+      return fake.factory(lang);
+    };
+    const engine = createOcrEngine(flaky, { maxStartAttempts: 2, poolSize: 1 });
+    expect((await engine.warmUp("ben")).ok).toBe(false);
+    expect((await engine.warmUp("ben")).ok).toBe(true);
+    // Kill the only worker so the next call has to start one again.
+    fake.state.failRecognize = true;
+    expect((await engine.recognize(IMAGE, "ben")).ok).toBe(false);
+    fake.state.failRecognize = false;
+    expect((await engine.recognize(IMAGE, "ben")).ok).toBe(false); // attempt 3 fails…
+    expect((await engine.recognize(IMAGE, "ben")).ok).toBe(true); // …but the breaker was reset, so 4 runs
+  });
+
+  it.each([
+    ["zero width", { width: 0, height: 2, data: new Uint8ClampedArray(0) }],
+    ["fractional size", { width: 1.5, height: 2, data: new Uint8ClampedArray(12) }],
+    ["short buffer", { width: 2, height: 2, data: new Uint8ClampedArray(15) }],
+    ["over the pixel cap", { width: 5000, height: 5000, data: new Uint8ClampedArray(4) }],
+  ] as Array<[string, RawImage]>)("refuses a malformed image (%s) without spending a worker on it", async (_, image) => {
+    const fake = fakeFactory();
+    const engine = createOcrEngine(fake.factory);
+    const result = await engine.recognize(image, "ben");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toBe("This image could not be read.");
+    expect(fake.workers).toHaveLength(0);
+  });
+
+  it("clamps nonsense confidence and text from a worker into the documented ranges", async () => {
+    const odd: WorkerFactory = async () => ({
+      async recognize() {
+        return {
+          text: undefined as unknown as string,
+          confidence: Number.NaN,
+          words: [
+            { text: "a", confidence: 140 },
+            { text: "b", confidence: -3 },
+            null as unknown as { text: string; confidence: number },
+            { text: 7 as unknown as string, confidence: 50 },
+          ],
+        };
+      },
+      async terminate() {},
+    });
+    const engine = createOcrEngine(odd);
+    const result = await engine.recognize(IMAGE, "ben");
+    expect(result.ok && result.value).toEqual({
+      text: "",
+      confidence: 0,
+      lang: "ben",
+      words: [
+        { text: "a", confidence: 100 },
+        { text: "b", confidence: 0 },
+      ],
+    });
   });
 });

@@ -72,7 +72,12 @@ export async function runOcrJob(
   if (items.length === 0) return ok({ outcomes: [], cancelled: false });
 
   // A download or WASM failure would otherwise surface as the same error on every item.
-  const warm = await engine.warmUp("ben");
+  let warm: Result<void>;
+  try {
+    warm = await engine.warmUp("ben");
+  } catch (cause) {
+    warm = err(AppErrors.unknown(START_FAILED, { debug: describe(cause) }));
+  }
   if (!warm.ok) return err(warm.error);
 
   const slots: Array<ItemOutcome | undefined> = new Array(items.length);
@@ -97,11 +102,24 @@ export async function runOcrJob(
     while (!signal?.aborted && next < items.length) {
       const index = next++;
       const item = items[index];
-      const outcome = await readItem(item, loadInOrder, engine);
+      let outcome: ItemOutcome | typeof SKIPPED;
+      try {
+        outcome = await readItem(item, loadInOrder, engine);
+      } catch (cause) {
+        // Only an engine breaking its own Result contract gets here; one item fails, the job goes on.
+        outcome = { status: "failed", id: item.id, error: AppErrors.unknown(ITEM_FAILED, { debug: describe(cause) }) };
+      }
       if (outcome === SKIPPED) return;
+      // A failure that lands after a cancel is almost always the cancel itself (the page disposed
+      // the engine mid-pass), so the item counts as unfinished rather than failed.
+      if (outcome.status === "failed" && signal?.aborted) return;
       slots[index] = outcome;
       completed++;
-      onItem?.(outcome, { completed, total: items.length });
+      try {
+        onItem?.(outcome, { completed, total: items.length });
+      } catch {
+        // A UI callback bug must not abandon the other workers mid-job; the outcome is still returned.
+      }
     }
   }
 
@@ -114,6 +132,12 @@ export async function runOcrJob(
 }
 
 const SKIPPED = Symbol("skipped");
+const START_FAILED = "Text recognition could not start. Check your connection and try again.";
+const ITEM_FAILED = "This image could not be read.";
+
+function describe(cause: unknown): string {
+  return cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+}
 
 async function readItem(
   item: OcrWorkItem,
@@ -129,7 +153,7 @@ async function readItem(
       id: item.id,
       error: AppErrors.fileProcessing("This image could not be extracted from the file.", {
         details: { reason: "extraction_failed" },
-        debug: cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause),
+        debug: describe(cause),
       }),
     };
   }

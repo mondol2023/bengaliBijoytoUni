@@ -241,4 +241,58 @@ describe("runOcrJob", () => {
     const result = await runOcrJob([], fakeEngine(confident("x")));
     expect(result).toEqual(ok({ outcomes: [], cancelled: false }));
   });
+
+  it("does not report items cut off by a cancel (engine disposed mid-pass) as failures", async () => {
+    const controller = new AbortController();
+    const engine = fakeEngine(confident("x"));
+    let calls = 0;
+    engine.recognize = async () => {
+      calls++;
+      if (calls === 1) return ok(pass("first", 95, "ben"));
+      // The page cancels and disposes the engine while this pass is running.
+      controller.abort();
+      return err(AppErrors.unknown("Text recognition was stopped."));
+    };
+    const result = await runOcrJob([item("a"), item("b"), item("c")], engine, {
+      signal: controller.signal,
+      concurrency: 1,
+    });
+    expect(result.ok && result.value).toMatchObject({ cancelled: true, outcomes: [{ id: "a", status: "done" }] });
+    expect(result.ok && result.value.outcomes).toHaveLength(1);
+  });
+
+  it("keeps going when the progress callback throws", async () => {
+    const result = await runOcrJob([item("a"), item("b")], fakeEngine(confident("x")), {
+      onItem() {
+        throw new Error("setState on an unmounted component");
+      },
+    });
+    expect(result.ok && result.value.outcomes.map((o) => o.status)).toEqual(["done", "done"]);
+  });
+
+  it("turns an engine that throws instead of returning a result into a failed item", async () => {
+    const engine = fakeEngine(confident("x"));
+    engine.recognize = async () => {
+      throw new Error("broken engine");
+    };
+    const result = await runOcrJob([item("a")], engine);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const [outcome] = result.value.outcomes;
+      expect(outcome.status).toBe("failed");
+      if (outcome.status === "failed") {
+        expect(outcome.error.message).not.toMatch(/broken/);
+        expect(String(outcome.error.debug)).toMatch(/broken engine/);
+      }
+    }
+  });
+
+  it("returns an error, not a rejection, when warming up throws", async () => {
+    const engine = fakeEngine(confident("x"));
+    engine.warmUp = async () => {
+      throw new Error("boom");
+    };
+    const result = await runOcrJob([item("a")], engine);
+    expect(result.ok).toBe(false);
+  });
 });

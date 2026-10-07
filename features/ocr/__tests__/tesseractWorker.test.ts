@@ -4,7 +4,7 @@ import path from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createOcrEngine } from "../engine/tesseract";
-import type { OcrEngine } from "../engine/tesseract";
+import type { OcrEngine, WorkerFactory } from "../engine/tesseract";
 import { createTesseractWorkerFactory, wordsFromBlocks } from "../engine/tesseractWorker";
 import type { RawImage } from "../types";
 
@@ -92,6 +92,34 @@ describe("createTesseractWorkerFactory (real Tesseract)", () => {
     const result = await engine.recognize(blank, "ben");
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.text.trim()).toBe("");
+  }, 60_000);
+
+  // tesseract.js's `terminate()` kills the worker without rejecting its pending job, so before the
+  // engine raced passes against dispose, this await never returned.
+  it("settles a pass that is cut off by dispose", async () => {
+    const real = createTesseractWorkerFactory({ langPath: langDir, cacheMethod: "none" });
+    let posted!: () => void;
+    const inFlight = new Promise<void>((resolve) => (posted = resolve));
+    // Signals once the job has really been handed to the worker, so dispose lands mid-pass.
+    const factory: WorkerFactory = async (lang) => {
+      const worker = await real(lang);
+      return {
+        recognize(image) {
+          const job = worker.recognize(image);
+          posted();
+          return job;
+        },
+        terminate: () => worker.terminate(),
+      };
+    };
+    const own = createOcrEngine(factory, { poolSize: 1 });
+    expect((await own.warmUp("ben")).ok).toBe(true);
+    const pending = own.recognize(textImage("Hello world"), "ben");
+    await inFlight;
+    await own.dispose();
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toMatch(/stopped/i);
   }, 60_000);
 
   it("reports start-up failure when the language data is missing", async () => {

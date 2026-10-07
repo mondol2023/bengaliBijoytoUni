@@ -24,6 +24,19 @@ export const OCR_MAX_ITEM_PIXELS = 16_000_000;
 
 /** Tesseract workers alive per language. Each holds a WASM instance plus the language data, so two is the memory/latency compromise. */
 export const OCR_WORKER_POOL_SIZE = 2;
+/**
+ * Longest a worker may take to start: the first use downloads ~6 MB (WASM core
+ * plus `ben` data), which is ~50 s on a slow 1 Mbps link. *Provisional.*
+ */
+export const OCR_WORKER_START_TIMEOUT_MS = 120_000;
+/**
+ * Longest one pass over one image may take before its worker is presumed dead
+ * (tesseract.js never settles a job whose worker crashed). A 2× page is a few
+ * seconds on a laptop; this leaves room for a slow phone. *Provisional.*
+ */
+export const OCR_RECOGNIZE_TIMEOUT_MS = 90_000;
+/** Consecutive start failures for one language before it is given up on for the rest of the job. */
+export const OCR_WORKER_START_ATTEMPTS = 2;
 
 // ── Whole-page rendering ───────────────────────────────────────────────────
 

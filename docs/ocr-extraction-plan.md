@@ -211,7 +211,7 @@ Real-corpus check (~/Downloads, scratch script, deleted): 4 court/CamScanner var
 - **`OCR_MIN_ROW_AREA_PX` = 12 000 kept**: it only dropped the 14 genuinely tiny rows; no calibration change.
 - Open: the CamScanner logo survives as a row. A rule on *placed* size (< ~30 pt on both sides) would drop it; deferred to Phase 3 where the engine's confidence/empty-output rule already discards it cheaply.
 
-## 14. Phase 3 status (2026-10-07) — done, uncommitted
+## 14. Phase 3 status (2026-10-07) — done, committed in `44493db`
 
 Engine + runtime hosting + `/ocr`-scoped CSP, with 52 new tests (suite: 133 files / 2235 tests). `npx tsc --noEmit`, `npm run lint`, `npx vitest run` and `npm run build` are green; no route was added or changed in the build output. New deps (pinned): `tesseract.js` 7.0.0, dev `@tesseract.js-data/ben` 1.0.0 and `@tesseract.js-data/eng` 1.0.0.
 
@@ -227,3 +227,16 @@ Design decisions / deviations:
 - tesseract.js is created with `workerBlobURL: false` (same-origin worker, so the page doesn't actually need `blob:` for it); `blob:` is kept in `worker-src`/`img-src` per the plan for crop thumbnails.
 
 Not verified (needs a real browser, i.e. Phase 4): `tesseractWorker.ts` through Turbopack/Next's client bundler (nothing imports it yet, so `next build` hasn't compiled it); the browser-side worker/core/IndexedDB-cache path; `browserCanvasEnv.decodeImage` on a real JPEG. The CamScanner-logo "throw-away row" from §13 is still handled only by the confidence/empty-output rule.
+
+### Phase 3 hardening pass (2026-10-07) — uncommitted
+
+Status check first: `tsc`, `lint`, `vitest` (133 files / 2235 tests) and `build` were all green; the only stale item was this section's "uncommitted" (Phase 3 landed in `44493db`). The review then found one real bug and several soft spots, all fixed test-first; suite now 133 files / **2250 tests**, all four commands green.
+
+- **Bug: a cancelled job could hang forever.** tesseract.js's `terminate()` kills the worker but never rejects its pending job (both Node and browser adapters), and a worker crash (`onerror`) only rejects the *start* promise. So `dispose()` during a pass, or a mid-pass WASM abort/OOM kill, left `engine.recognize` — and so `runOcrJob` — pending for good. Every start and pass in `tesseract.ts` now goes through `settle()`, which races it against a timeout and `dispose()`. Proven against real Tesseract (`tesseractWorker.test.ts` "cut off by dispose"): with the fix removed the test hangs to its 60 s timeout.
+- **Timeouts** (`config.ts`, *provisional*): `OCR_WORKER_START_TIMEOUT_MS` 120 s (first use downloads ~6 MB), `OCR_RECOGNIZE_TIMEOUT_MS` 90 s. A timed-out pass discards and terminates its worker ("This image took too long to read."); a start that turns up after its timeout or after dispose is terminated instead of leaked.
+- **Start circuit breaker** (`OCR_WORKER_START_ATTEMPTS` = 2): after two consecutive start failures for a language, calls fail fast (live workers are still used). Without it, a broken `ben+eng` download made *each* low-confidence item wait out its own start and left one half-started Worker behind per item — the factory can't terminate a worker whose start failed (§14 above). A successful start resets the count.
+- **Input validation before a worker is spent:** non-integer/zero size, buffer length ≠ w·h·4, or over `OCR_MAX_ITEM_PIXELS` → "This image could not be read." with the reason in `debug`. Extraction already caps rows/pages under that, so it is an invariant check, not a new limit.
+- **Output sanitised:** non-string text → `""`, confidence NaN/out of range → clamped to 0..100, malformed words dropped, so `confidence.ts` rules always see their documented ranges.
+- **Orchestrator:** a throwing `onItem` (e.g. a UI bug) no longer rejects `runOcrJob` while other workers keep running; an engine that throws instead of returning a `Result` fails that one item; a throwing `warmUp` becomes an error result. After a cancel, a *failed* outcome is treated as unfinished (it is almost always the dispose cutting the pass off), so the UI won't show "failed" cards for items the user stopped.
+
+Still open (needs Phase 4's real browser): the start/recognize timeouts are not tuned on a slow phone; the half-started worker after a start *failure* is still unreachable (bounded to `OCR_WORKER_START_ATTEMPTS` per language per job now).
