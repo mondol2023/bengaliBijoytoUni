@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Noto_Sans_Bengali } from "next/font/google";
+import { BackToTop } from "@/components/layout/BackToTop";
 import { FoundryGround } from "@/components/layout/FoundryGround";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { TooltipProvider } from "@/components/ui/Tooltip";
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <TooltipProvider>
             <SiteHeader />
             <div className="flex flex-1 flex-col">{children}</div>
+            <BackToTop />
           </TooltipProvider>
         </AuthProvider>
       </body>
