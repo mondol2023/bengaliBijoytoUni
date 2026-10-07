@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored, minified Tesseract/pdf.js runtime copied here by `npm run ocr:sync`.
+    "public/ocr/**",
   ]),
 ]);
 

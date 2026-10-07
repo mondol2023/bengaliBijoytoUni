@@ -65,3 +65,6 @@ node_modules/
 *-debug.log
 /.firebase/
 /emulator-data/
+
+# Self-hosted OCR runtime (rebuilt by `npm run ocr:sync`, run from predev/prebuild)
+/public/ocr/

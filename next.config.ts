@@ -22,24 +22,33 @@ import type { NextConfig } from "next";
  */
 const isDev = process.env.NODE_ENV !== "production";
 
-// React's dev build (and Turbopack's HMR runtime) compile with eval(); the
-// production bundle never does, so 'unsafe-eval' is dev-only.
-const CSP_DIRECTIVES = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https:",
-  "font-src 'self' data:",
-  "connect-src 'self' https://*.googleapis.com https://*.google.com",
-  "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join("; ");
+/**
+ * `ocr` is true only for the `/ocr` page (and the self-hosted Tesseract files under it): the
+ * recognition engine is WebAssembly running in a Web Worker, and it draws image crops from
+ * `blob:` URLs. Those three relaxations are scoped to that route rather than granted everywhere.
+ */
+function cspDirectives({ ocr }: { ocr: boolean }): string {
+  // React's dev build (and Turbopack's HMR runtime) compile with eval(); the
+  // production bundle never does, so 'unsafe-eval' is dev-only.
+  const scriptSrc = `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${ocr ? " 'wasm-unsafe-eval'" : ""}`;
+  return [
+    "default-src 'self'",
+    scriptSrc,
+    "style-src 'self' 'unsafe-inline'",
+    `img-src 'self' data: https:${ocr ? " blob:" : ""}`,
+    ...(ocr ? ["worker-src 'self' blob:"] : []),
+    "font-src 'self' data:",
+    "connect-src 'self' https://*.googleapis.com https://*.google.com",
+    "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
 
+/** Everything except the CSP, which differs per route (see `cspDirectives`). */
 const SECURITY_HEADERS = [
-  { key: "Content-Security-Policy", value: CSP_DIRECTIVES },
   // Belt-and-suspenders alongside `frame-ancestors 'none'` above, for
   // browsers that only understand the older header.
   { key: "X-Frame-Options", value: "DENY" },
@@ -67,7 +76,24 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
-      { source: "/:path*", headers: SECURITY_HEADERS },
+      // Two matching rules would send two CSP headers, and a browser enforces their *intersection* —
+      // so the relaxed `/ocr` policy cannot be layered on top of the strict one. The strict rule
+      // therefore excludes `/ocr` and `/ocr/*` (but not e.g. `/ocrfoo`), and `/ocr` gets its own.
+      {
+        source: "/:path((?!ocr(?:/|$)).*)",
+        headers: [{ key: "Content-Security-Policy", value: cspDirectives({ ocr: false }) }, ...SECURITY_HEADERS],
+      },
+      {
+        source: "/ocr/:path*",
+        headers: [{ key: "Content-Security-Policy", value: cspDirectives({ ocr: true }) }, ...SECURITY_HEADERS],
+      },
+      {
+        // The self-hosted Tesseract runtime (see `npm run ocr:sync`): a worker script, the WASM core
+        // and ~MB of language data. Same reasoning as the dictionaries — they change only when the
+        // npm packages are bumped.
+        source: "/ocr/:path+",
+        headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }],
+      },
       {
         // The ~1MB Hunspell spelling dictionaries (see `npm run dict:sync`). Next serves `public/`
         // files with `max-age=0`, which would re-validate them on every Compare visit; they change
