@@ -8,11 +8,13 @@ export function Progress({
   max = 100,
   className,
   indicatorClassName,
+  "aria-label": ariaLabel,
 }: {
   value: number;
   max?: number;
   className?: string;
   indicatorClassName?: string;
+  "aria-label"?: string;
 }) {
   const pct = max <= 0 ? 0 : Math.min(100, Math.max(0, (value / max) * 100));
 
@@ -20,6 +22,7 @@ export function Progress({
     <ProgressPrimitive.Root
       value={value}
       max={max || 1}
+      aria-label={ariaLabel}
       className={cn("relative h-2 w-full overflow-hidden rounded-full bg-surface-muted", className)}
     >
       <ProgressPrimitive.Indicator

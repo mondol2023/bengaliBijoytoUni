@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   OCR_MAX_ITEMS,
   OCR_MAX_PAGES,
+  OCR_PDF_DOCUMENT_OPTIONS,
+  OCR_PREVIEW_MAX_EDGE_PX,
   OCR_MAX_PAGE_PIXELS,
   OCR_PAGE_RENDER_SCALE,
   checkItemCap,
@@ -63,5 +65,22 @@ describe("checkItemCap", () => {
 
   it("accepts zero — finding nothing is the page's 'no images with text' state, not an error", () => {
     expect(checkItemCap(0).ok).toBe(true);
+  });
+});
+
+describe("pdf.js hosting and previews", () => {
+  it("points pdf.js at the self-hosted decoder dirs", () => {
+    const urls = Object.values(OCR_PDF_DOCUMENT_OPTIONS).filter(
+      (v): v is string => typeof v === "string",
+    );
+    expect(urls.length).toBeGreaterThan(0);
+    for (const url of urls) {
+      expect(url.startsWith("/ocr/pdfjs/")).toBe(true);
+      expect(url.endsWith("/")).toBe(true);
+    }
+  });
+
+  it("keeps previews within the page pixel cap", () => {
+    expect(OCR_PREVIEW_MAX_EDGE_PX ** 2).toBeLessThanOrEqual(OCR_MAX_PAGE_PIXELS);
   });
 });

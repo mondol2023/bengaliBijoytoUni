@@ -3,16 +3,18 @@
 //   core/*-lstm.wasm.js       the WASM engine, three CPU variants  (tesseract.js-core)
 //   lang/{ben,eng}.traineddata.gz   integer-quantised `best_int` models (@tesseract.js-data/*)
 //   pdf.worker.min.mjs        the pdf.js worker                    (pdfjs-dist)
+//   pdfjs/{wasm,cmaps,standard_fonts,iccs}/   pdf.js image decoders (JBIG2, JPEG 2000, ICC) and
+//                             fonts/CMaps for non-embedded fonts   (pdfjs-dist)
 // Tesseract's default is to fetch all of this from a CDN at runtime; hosting it ourselves keeps the
 // page working offline after first load, lets the CSP stay `'self'`, and means no third party sees
 // which files a visitor reads. Float `best` models are deliberately not used: they crash the WASM
 // core (docs/ocr-extraction-plan.md §11).
 //
-// public/ocr/ is gitignored (~15 MB of binaries) and rebuilt by `predev`/`prebuild`, which only copy
+// public/ocr/ is gitignored (~19 MB of binaries) and rebuilt by `predev`/`prebuild`, which only copy
 // a file that is missing or a different size, so a repeat run is instant. Run by hand after bumping
 // any of the packages above:
 //   npm run ocr:sync
-import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -26,6 +28,29 @@ const CORE_VARIANTS = [
 ];
 const LANGUAGES = ["ben", "eng"];
 
+const PDFJS_DIRS = ["wasm", "cmaps", "standard_fonts", "iccs"];
+
+/** Every file under a directory, as paths relative to it. */
+function listFiles(dir, prefix = "") {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory()
+      ? listFiles(path.join(dir, entry.name), path.join(prefix, entry.name))
+      : [path.join(prefix, entry.name)],
+  );
+}
+
+const pdfjsFiles = PDFJS_DIRS.flatMap((dir) => {
+  const src = nm("pdfjs-dist", dir);
+  if (!existsSync(src)) {
+    console.error(`ocr:sync: missing ${path.relative(root, src)} — run \`npm install\` first.`);
+    process.exit(1);
+  }
+  return listFiles(src).map((rel) => ({
+    from: path.join(src, rel),
+    to: path.join(out, "pdfjs", dir, rel),
+  }));
+});
+
 const files = [
   { from: nm("tesseract.js", "dist", "worker.min.js"), to: path.join(out, "worker.min.js") },
   ...CORE_VARIANTS.map((name) => ({
@@ -37,6 +62,7 @@ const files = [
     to: path.join(out, "lang", `${lang}.traineddata.gz`),
   })),
   { from: nm("pdfjs-dist", "build", "pdf.worker.min.mjs"), to: path.join(out, "pdf.worker.min.mjs") },
+  ...pdfjsFiles,
 ];
 
 let copied = 0;
@@ -59,7 +85,7 @@ writeFileSync(
     "",
     "worker.min.js, core/*      tesseract.js and tesseract.js-core — Apache-2.0",
     "lang/*.traineddata.gz      tessdata_best (integer-quantised), Apache-2.0, packaged by @tesseract.js-data (MIT)",
-    "pdf.worker.min.mjs         pdf.js — Apache-2.0",
+    "pdf.worker.min.mjs, pdfjs/*  pdf.js — Apache-2.0",
     "",
   ].join("\n"),
 );

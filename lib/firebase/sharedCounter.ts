@@ -35,7 +35,7 @@ import type { CounterSlot, CounterStore, ReserveOutcome } from "@/lib/security/c
  * an evidence collection. Naming the collections here turns that from a
  * convention into a refusal; `__tests__/sharedCounter.test.ts` pins the list.
  */
-export const SHARED_COUNTER_COLLECTIONS: ReadonlySet<string> = new Set(["aiCallBudget", "rateLimitWindows"]);
+export const SHARED_COUNTER_COLLECTIONS: ReadonlySet<string> = new Set(["aiCallBudget", "ocrCallBudget", "rateLimitWindows"]);
 
 function assertCounterCollection(collection: string): void {
   if (!SHARED_COUNTER_COLLECTIONS.has(collection)) {

@@ -130,6 +130,12 @@ describe("which collections a counter may touch", () => {
     expect(db.writes).toStrictEqual([]);
   });
 
+  it("accepts the OCR call budget collection, so that budget can reach Firestore", async () => {
+    const target = { collection: "ocrCallBudget", docId: "gemini-2026-10-08", limit: 1, expireAt: EXPIRE };
+    expect((await firestoreCounterStore.reserve(target)).admitted).toBe(true);
+    expect(await firestoreCounterStore.read(target)).toBe(1);
+  });
+
   it("names no evidence or resolution collection as a counter", () => {
     for (const forbidden of ["aiResolutions", "conversionFailures", "failurePatterns"]) {
       expect(SHARED_COUNTER_COLLECTIONS.has(forbidden)).toBe(false);

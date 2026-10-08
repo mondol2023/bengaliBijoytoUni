@@ -118,6 +118,21 @@ export const DOCUMENTS_NOTE: Bilingual = {
 };
 
 /**
+ * On the foot band of the text-from-images page. `hooks/useOcrJob.ts` and
+ * `features/ocr/job/browserRuntime.ts` read the file in the browser; the
+ * engine files are fetched once and cached by the browser. The Bengali is a
+ * draft awaiting native review, like the rest of this file.
+ */
+export const OCR_NOTE: Bilingual = {
+  en:
+    "Read in your browser. The file is not uploaded. The first time, your browser downloads the " +
+    "reading engine once and keeps it.",
+  bn:
+    "লেখা আপনার ব্রাউজারেই পড়া হয় — ফাইল আপলোড হয় না। প্রথমবার আপনার ব্রাউজার পড়ার ইঞ্জিনটি " +
+    "একবার ডাউনলোড করে রেখে দেয়।",
+};
+
+/**
  * Next to the "Convert with Gemini" control on the documents page.
  * `app/api/ai/transcribe/route.ts`, `lib/ai/transcribeDocument.ts`,
  * `hooks/useDocumentConversion.ts` (the automatic trigger and its switch).

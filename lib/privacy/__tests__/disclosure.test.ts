@@ -15,6 +15,7 @@ import {
   CONVERTER_NOTE,
   DOCUMENTS_NOTE,
   FOOTER_LINK_LABEL,
+  OCR_NOTE,
   PRIVACY_LINK_LABEL,
   PRIVACY_PAGE_INTRO,
   PRIVACY_PAGE_SECTIONS,
@@ -33,6 +34,7 @@ const allCopy: { label: string; value: Bilingual }[] = [
   { label: "CONVERTER_NOTE", value: CONVERTER_NOTE },
   { label: "DOCUMENTS_NOTE", value: DOCUMENTS_NOTE },
   { label: "AI_TRANSCRIPTION_NOTE", value: AI_TRANSCRIPTION_NOTE },
+  { label: "OCR_NOTE", value: OCR_NOTE },
   { label: "PRIVACY_LINK_LABEL", value: PRIVACY_LINK_LABEL },
   { label: "FOOTER_LINK_LABEL", value: FOOTER_LINK_LABEL },
   { label: "PRIVACY_PAGE_TITLE", value: PRIVACY_PAGE_TITLE },
@@ -114,6 +116,11 @@ describe("the disclosure copy is complete in both languages", () => {
     expect(DOCUMENTS_NOTE.en).not.toBe(CONVERTER_NOTE.en);
     expect(CONVERTER_NOTE.en).toContain("not uploaded");
     expect(DOCUMENTS_NOTE.en).toContain("our server");
+  });
+
+  it("tells the text-from-images page's reader the file stays in the browser", () => {
+    expect(OCR_NOTE.en).toContain("not uploaded");
+    expect(OCR_NOTE.en).toContain("downloads the reading engine");
   });
 
   it("promises deletion only in the form the code can keep", () => {

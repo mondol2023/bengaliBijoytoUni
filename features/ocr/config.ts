@@ -45,6 +45,26 @@ export const OCR_PAGE_RENDER_SCALE = 2;
 /** Pixel budget for one rendered page; an oversize page is scaled down to fit. */
 export const OCR_MAX_PAGE_PIXELS = 4_000_000;
 
+// ── pdf.js hosting and previews ────────────────────────────────────────────
+
+/** The self-hosted pdf.js worker (copied by `npm run ocr:sync`). */
+export const OCR_PDF_WORKER_SRC = "/ocr/pdf.worker.min.mjs";
+/**
+ * `getDocument` options pointing pdf.js at the self-hosted decoders (WASM for JBIG2/JPEG 2000/ICC)
+ * and fonts/CMaps for non-embedded fonts. All read by pdfjs-dist 6.4.299; all copied by `ocr:sync`.
+ */
+export const OCR_PDF_DOCUMENT_OPTIONS: Readonly<Record<string, unknown>> = {
+  wasmUrl: "/ocr/pdfjs/wasm/",
+  cMapUrl: "/ocr/pdfjs/cmaps/",
+  cMapPacked: true,
+  standardFontDataUrl: "/ocr/pdfjs/standard_fonts/",
+  iccUrl: "/ocr/pdfjs/iccs/",
+};
+/** Longest edge of a row/page preview — readable when enlarged, and (squared) within the page pixel cap. */
+export const OCR_PREVIEW_MAX_EDGE_PX = 1600;
+/** Longest edge of the scanner-bed page render. */
+export const OCR_BED_PAGE_MAX_EDGE_PX = 900;
+
 // ── Filtering embedded images ──────────────────────────────────────────────
 
 /** An image with a side under this is an icon or rule, not text. */
