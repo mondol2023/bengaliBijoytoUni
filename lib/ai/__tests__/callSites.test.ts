@@ -102,6 +102,13 @@ describe("the scan sees the tree it claims to", () => {
  *     -> lib/ai/transcribeDocument.ts   (the only transcription service)
  *       -> lib/ai/registry.ts           (getTranscriptionProvider; flag enforced here)
  *
+ * and a third, for reading cropped OCR images (its own per-provider switches,
+ * `OCR_<ID>_ENABLED`, enforced in the same registry):
+ *
+ *   app/api/ocr/improve/route.ts        (signed-in HTTP entry, rate-limited; outside app/api/documents)
+ *     -> lib/ai/ocrImages.ts            (the only OCR service)
+ *       -> lib/ai/registry.ts           (getOcrProviders; switches enforced here)
+ *
  * Each `it` below pins one link. Adding a second admin route, or importing a
  * provider from somewhere new, fails the matching case by name.
  */
@@ -111,12 +118,18 @@ describe("Guard B: only one chain reaches a provider", () => {
     expect(importersMatching(pattern)).toStrictEqual(["lib/ai/registry.ts"]);
   });
 
-  it("has exactly the two service modules importing the registry", () => {
+  it("has exactly the three service modules importing the registry", () => {
     const pattern = /from\s+["'](?:@\/lib\/ai\/registry|\.{1,2}\/registry)["']/;
     expect(importersMatching(pattern)).toStrictEqual([
+      "lib/ai/ocrImages.ts",
       "lib/ai/resolveConversionFailure.ts",
       "lib/ai/transcribeDocument.ts",
     ]);
+  });
+
+  it("has exactly one route importing the OCR service, outside the conversion path", () => {
+    const pattern = /from\s+["'](?:@\/lib\/ai\/ocrImages|\.{1,2}\/ocrImages)["']/;
+    expect(importersMatching(pattern)).toStrictEqual(["app/api/ocr/improve/route.ts"]);
   });
 
   it("has exactly one route importing the transcription service, outside the conversion path", () => {
@@ -206,6 +219,44 @@ describe("Guard B: the conversion path never imports lib/ai", () => {
       if (/import\(\s*["'][^"']*lib\/ai/.test(contents)) offenders.push(`${repoRelative(file)} (dynamic)`);
     }
     expect(offenders, "conversion must stay deterministic and free of any AI dependency").toStrictEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The OCR feature is client code: it reaches AI only over HTTP
+// ---------------------------------------------------------------------------
+
+/**
+ * `features/ocr`, the `/ocr` components and its hook run in the browser. They
+ * may call `/api/ocr/improve`, but must never import anything under `lib/ai`
+ * (it holds provider keys and `assertServerOnly` would throw there anyway).
+ * Roots the browser UI adds later (`components/ocr`, `hooks/useOcrJob.ts`) are
+ * scanned as soon as they exist; `features/ocr` must exist now.
+ */
+describe("Guard B: the OCR feature never imports lib/ai", () => {
+  const roots = ["features/ocr", "components/ocr", "hooks/useOcrJob.ts"];
+
+  it("scans features/ocr, which must exist", () => {
+    expect(() => statSync(path.join(REPO_ROOT, "features/ocr"))).not.toThrow();
+  });
+
+  it("finds no import of lib/ai from any of them", () => {
+    const offenders: string[] = [];
+    for (const root of roots) {
+      const full = path.join(REPO_ROOT, root);
+      let files: string[];
+      try {
+        files = statSync(full).isDirectory() ? listShippedSources(full) : [full];
+      } catch {
+        continue;
+      }
+      for (const file of files) {
+        const contents = withoutComments(file);
+        if (/(?:from|import)\s+["'][^"']*lib\/ai/.test(contents)) offenders.push(repoRelative(file));
+        if (/import\(\s*["'][^"']*lib\/ai/.test(contents)) offenders.push(`${repoRelative(file)} (dynamic)`);
+      }
+    }
+    expect(offenders, "the OCR UI must reach AI only through its API route").toStrictEqual([]);
   });
 });
 

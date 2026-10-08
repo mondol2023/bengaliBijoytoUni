@@ -143,3 +143,140 @@ describe("geminiProvider", () => {
     if (!result.ok) expect(result.error.code).toBe("provider_timeout");
   });
 });
+
+describe("geminiOcrProvider", () => {
+  const originalFetch = global.fetch;
+  const images = [
+    { mimeType: "image/jpeg" as const, data: Buffer.from([0xff, 0xd8, 0xff, 1]) },
+    { mimeType: "image/png" as const, data: Buffer.from([0x89, 0x50, 0x4e, 0x47, 2]) },
+  ];
+  const answer = JSON.stringify({
+    images: [
+      { index: 1, text: "ক" },
+      { index: 2, text: "খ" },
+    ],
+  });
+
+  function configure(model: string | null = "test-ocr-model") {
+    vi.stubEnv("GEMINI_API_KEY", "super-secret-key-value");
+    vi.stubEnv("OCR_GEMINI_MODEL", model ?? undefined);
+  }
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ["the key is missing", { key: "", model: "m" }],
+    ["the model is missing", { key: "k", model: "" }],
+  ])("is not configured, and never calls fetch, when %s", async (_name, { key, model }) => {
+    vi.stubEnv("GEMINI_API_KEY", key);
+    vi.stubEnv("OCR_GEMINI_MODEL", model);
+    global.fetch = vi.fn();
+    const { geminiOcrProvider } = await freshGeminiModule();
+    expect(geminiOcrProvider.isConfigured()).toBe(false);
+    const result = await geminiOcrProvider.readImages(images);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("provider_not_configured");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("has no default model", async () => {
+    configure(null);
+    const { geminiOcrProvider } = await freshGeminiModule();
+    expect(geminiOcrProvider.model).toBe("");
+    expect(geminiOcrProvider.isConfigured()).toBe(false);
+  });
+
+  it("sends the images in order to the configured model and returns the texts", async () => {
+    configure();
+    const fetchMock = vi.fn().mockResolvedValue(fakeOkResponse(answer));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const { geminiOcrProvider } = await freshGeminiModule();
+    const result = await geminiOcrProvider.readImages(images);
+
+    expect(result).toEqual({
+      ok: true,
+      value: { texts: ["ক", "খ"], provider: "gemini", model: "test-ocr-model", promptVersion: "ocr-v1" },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/models/test-ocr-model:generateContent");
+    const body = JSON.parse(init.body as string);
+    const inline = body.contents[0].parts.filter((p: { inlineData?: unknown }) => p.inlineData);
+    expect(inline.map((p: { inlineData: { data: string } }) => p.inlineData.data)).toEqual(
+      images.map((i) => i.data.toString("base64")),
+    );
+    expect(inline.map((p: { inlineData: { mimeType: string } }) => p.inlineData.mimeType)).toEqual([
+      "image/jpeg",
+      "image/png",
+    ]);
+    expect(body.generationConfig.temperature).toBe(0);
+    expect(body.generationConfig.responseMimeType).toBe("application/json");
+  });
+
+  it.each([
+    [429, "provider_rate_limited"],
+    [503, "provider_unavailable"],
+    [401, "provider_authentication_failed"],
+  ])("maps HTTP %i to %s", async (status, code) => {
+    configure();
+    global.fetch = vi.fn().mockResolvedValue(fakeErrorResponse(status)) as unknown as typeof fetch;
+    const { geminiOcrProvider } = await freshGeminiModule();
+    const result = await geminiOcrProvider.readImages(images);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(code);
+  });
+
+  it("fails on a 404 (the model is gone) without leaking the key or model URL", async () => {
+    configure();
+    global.fetch = vi.fn().mockResolvedValue(fakeErrorResponse(404, "no longer available")) as unknown as typeof fetch;
+    const { geminiOcrProvider } = await freshGeminiModule();
+    const result = await geminiOcrProvider.readImages(images);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const safe = JSON.stringify({ code: result.error.code, message: result.error.message });
+      expect(safe).not.toContain("super-secret-key-value");
+      expect(safe).not.toContain("generativelanguage");
+    }
+  });
+
+  it("returns provider_timeout when the call outlives timeoutMs", async () => {
+    configure();
+    global.fetch = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            const err = new Error("aborted");
+            err.name = "AbortError";
+            reject(err);
+          });
+        }),
+    ) as unknown as typeof fetch;
+    const { geminiOcrProvider } = await freshGeminiModule();
+    const result = await geminiOcrProvider.readImages(images, { timeoutMs: 20 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("provider_timeout");
+  });
+
+  it("fails the whole call when the answer does not line up with the images", async () => {
+    configure();
+    const short = JSON.stringify({ images: [{ index: 1, text: "ক" }] });
+    global.fetch = vi.fn().mockResolvedValue(fakeOkResponse(short)) as unknown as typeof fetch;
+    const { geminiOcrProvider } = await freshGeminiModule();
+    const result = await geminiOcrProvider.readImages(images);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("provider_invalid_response");
+  });
+
+  it("makes exactly one request per call, even after a failure (no retry)", async () => {
+    configure();
+    const fetchMock = vi.fn().mockResolvedValue(fakeErrorResponse(503));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const { geminiOcrProvider } = await freshGeminiModule();
+    await geminiOcrProvider.readImages(images);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

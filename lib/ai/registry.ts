@@ -14,19 +14,20 @@
  * remember it. `lib/ai/__tests__/callSites.test.ts` holds that property.
  */
 import { assertServerOnly } from "./assertServerOnly";
-import { isAiResolutionEnabled, isAiTranscriptionEnabled } from "./enabled";
+import { isAiResolutionEnabled, isAiTranscriptionEnabled, isOcrProviderEnabled } from "./enabled";
 
 assertServerOnly("lib/ai/registry.ts");
 
 import {
   type ConversionResolutionProvider,
   type DocumentTranscriptionProvider,
+  type OcrImageProvider,
   type ProviderId,
   isProviderId,
 } from "./types";
 import { type ProviderResult, providerOk, providerErr } from "./types";
 import { ProviderErrors } from "./errors";
-import { geminiProvider, geminiTranscriptionProvider } from "./providers/gemini";
+import { geminiOcrProvider, geminiProvider, geminiTranscriptionProvider } from "./providers/gemini";
 import { openAiProvider } from "./providers/openai";
 
 const PROVIDERS: Record<ProviderId, ConversionResolutionProvider> = {
@@ -70,4 +71,23 @@ export function getTranscriptionProvider(): ProviderResult<DocumentTranscription
     return providerErr(ProviderErrors.disabled("AI transcription"));
   }
   return providerOk(geminiTranscriptionProvider);
+}
+
+/**
+ * The ordered chain tried when reading OCR crops (`ocrImages.ts` walks it).
+ * Adding a provider is an adapter plus one line here; the order is the
+ * fallback order.
+ */
+const OCR_PROVIDER_CHAIN: readonly OcrImageProvider[] = [geminiOcrProvider];
+
+/**
+ * The OCR providers whose own switch (`OCR_<ID>_ENABLED`) is on. When none is,
+ * the whole feature is disabled and no provider object is handed out. Enabled
+ * but unconfigured providers are still returned: whether one has a key and a
+ * model is the service's question, and it must not spend budget on it.
+ */
+export function getOcrProviders(): ProviderResult<OcrImageProvider[]> {
+  const enabled = OCR_PROVIDER_CHAIN.filter((provider) => isOcrProviderEnabled(provider.id));
+  if (enabled.length === 0) return providerErr(ProviderErrors.disabled("AI text reading"));
+  return providerOk(enabled);
 }

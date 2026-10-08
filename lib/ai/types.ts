@@ -150,3 +150,32 @@ export interface DocumentTranscriptionProvider {
     options?: { readonly timeoutMs?: number },
   ): Promise<ProviderResult<DocumentTranscription>>;
 }
+
+/**
+ * Reading cropped images of text (the `/ocr` page's AI fallback). The crops
+ * are lines Tesseract read poorly; the provider returns one transcription per
+ * crop, in the same order. Like a document transcription, the output is shown
+ * labelled as AI output and goes nowhere else.
+ */
+export interface OcrImageInput {
+  readonly mimeType: "image/jpeg" | "image/png";
+  readonly data: Buffer;
+}
+
+export interface OcrImagesResult {
+  /** One text per input image, same order and length. */
+  readonly texts: readonly string[];
+  readonly provider: ProviderId;
+  readonly model: string;
+  readonly promptVersion: string;
+}
+
+export interface OcrImageProvider {
+  readonly id: ProviderId;
+  readonly model: string;
+  isConfigured(): boolean;
+  readImages(
+    images: readonly OcrImageInput[],
+    options?: { readonly timeoutMs?: number },
+  ): Promise<ProviderResult<OcrImagesResult>>;
+}

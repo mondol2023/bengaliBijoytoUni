@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AI_RESOLUTION_ENABLED_ENV } from "./enabled";
-import { getResolutionProvider, listResolutionProviders } from "./registry";
+import { getOcrProviders, getResolutionProvider, listResolutionProviders } from "./registry";
 
 /**
  * Every lookup below is about *which* provider comes back, so each one needs
@@ -109,5 +109,28 @@ describe("provider not-configured behavior", () => {
         expect(provider.isConfigured()).toBe(false);
       }
     }
+  });
+});
+
+describe("getOcrProviders", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is disabled when no OCR provider switch is on, whatever the other switches say", () => {
+    vi.stubEnv("OCR_GEMINI_ENABLED", undefined);
+    vi.stubEnv(AI_RESOLUTION_ENABLED_ENV, "true");
+    vi.stubEnv("AI_TRANSCRIPTION_ENABLED", "true");
+    const result = getOcrProviders();
+    expect(result.ok).toBe(false);
+    expect(result).not.toHaveProperty("value");
+    if (!result.ok) expect(result.error.code).toBe("provider_disabled");
+  });
+
+  it("returns the Gemini adapter when its switch is on", () => {
+    vi.stubEnv("OCR_GEMINI_ENABLED", "true");
+    const result = getOcrProviders();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.map((p) => p.id)).toEqual(["gemini"]);
   });
 });

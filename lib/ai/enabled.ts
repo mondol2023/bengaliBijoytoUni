@@ -42,3 +42,17 @@ export function isAiTranscriptionEnabled(): boolean {
   if (typeof raw !== "string") return false;
   return TRUTHY.has(raw.trim().toLowerCase());
 }
+
+/**
+ * The per-provider switch for reading OCR crops (`lib/ai/ocrImages.ts`):
+ * `OCR_GEMINI_ENABLED`, `OCR_OPENAI_ENABLED`, and so on. Its own switch for
+ * the same reason transcription has one: this spends money on behalf of any
+ * signed-in visitor, so neither `AI_RESOLUTION_ENABLED` nor
+ * `AI_TRANSCRIPTION_ENABLED` may arm it, and enabling one provider must not
+ * arm another. Same fail-closed parsing.
+ */
+export function isOcrProviderEnabled(id: string): boolean {
+  const raw = process.env[`OCR_${id.toUpperCase()}_ENABLED`];
+  if (typeof raw !== "string") return false;
+  return TRUTHY.has(raw.trim().toLowerCase());
+}

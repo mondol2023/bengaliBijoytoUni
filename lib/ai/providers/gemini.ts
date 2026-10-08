@@ -16,6 +16,9 @@ import type {
   DocumentTranscription,
   DocumentTranscriptionProvider,
   DocumentTranscriptionRequest,
+  OcrImageInput,
+  OcrImageProvider,
+  OcrImagesResult,
   ProviderResult,
   ResolutionOptions,
 } from "../types";
@@ -25,6 +28,9 @@ import { buildResolutionPrompt } from "../promptBuilder";
 import { parseProviderResponseText } from "../responseSchema";
 import { RESOLUTION_LIMITS, TRANSCRIPTION_LIMITS } from "../limits";
 import { TRANSCRIPTION_PROMPT_VERSION, TRANSCRIPTION_SYSTEM_INSTRUCTION } from "../transcriptionPrompt";
+import { OCR_PROMPT_VERSION, OCR_SYSTEM_INSTRUCTION, buildOcrUserText } from "../ocrPrompt";
+import { parseOcrResponse } from "../ocrResponse";
+import { OCR_AI_LIMITS } from "@/lib/ocr/limits";
 
 const GEMINI_MODEL = "gemini-2.0-flash";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -34,6 +40,14 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
  * model, overridable without a deploy of new code when Google renames one.
  */
 const GEMINI_TRANSCRIPTION_MODEL = process.env.GEMINI_TRANSCRIPTION_MODEL?.trim() || "gemini-2.5-flash";
+
+/**
+ * The OCR fallback's model. **No default, on purpose**: the repo's other Gemini
+ * defaults have already been retired by Google once (`gemini-2.5-flash` now
+ * answers 404 for new keys), and a default that fails silently is how that
+ * went unnoticed. An unset value means the OCR provider is not configured.
+ */
+const GEMINI_OCR_MODEL = process.env.OCR_GEMINI_MODEL?.trim() ?? "";
 
 export function isGeminiConfigured(): boolean {
   return Boolean(GEMINI_API_KEY);
@@ -210,4 +224,50 @@ export const geminiTranscriptionProvider: DocumentTranscriptionProvider = {
   model: GEMINI_TRANSCRIPTION_MODEL,
   isConfigured: isGeminiConfigured,
   transcribe,
+};
+
+async function readImages(
+  images: readonly OcrImageInput[],
+  options: { readonly timeoutMs?: number } = {},
+): Promise<ProviderResult<OcrImagesResult>> {
+  if (!isGeminiOcrConfigured()) {
+    return providerErr(ProviderErrors.notConfigured("gemini"));
+  }
+
+  const parts: unknown[] = [{ text: buildOcrUserText(images.length) }];
+  images.forEach((image, i) => {
+    parts.push({ text: `Image ${i + 1}` });
+    parts.push({ inlineData: { mimeType: image.mimeType, data: image.data.toString("base64") } });
+  });
+
+  const result = await generateContent(
+    GEMINI_OCR_MODEL,
+    {
+      systemInstruction: { parts: [{ text: OCR_SYSTEM_INSTRUCTION }] },
+      contents: [{ role: "user", parts }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0 },
+    },
+    options.timeoutMs ?? OCR_AI_LIMITS.providerTimeoutMs,
+  );
+  if (!result.ok) return result;
+
+  const texts = parseOcrResponse("gemini", result.value.text, images.length);
+  if (!texts.ok) return texts;
+  return providerOk({
+    texts: texts.value,
+    provider: "gemini",
+    model: GEMINI_OCR_MODEL,
+    promptVersion: OCR_PROMPT_VERSION,
+  });
+}
+
+function isGeminiOcrConfigured(): boolean {
+  return isGeminiConfigured() && GEMINI_OCR_MODEL !== "";
+}
+
+export const geminiOcrProvider: OcrImageProvider = {
+  id: "gemini",
+  model: GEMINI_OCR_MODEL,
+  isConfigured: isGeminiOcrConfigured,
+  readImages,
 };
