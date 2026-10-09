@@ -1,7 +1,18 @@
 import { AppErrors, err, ok } from "@/lib/errors/types";
 import type { Result } from "@/lib/errors/types";
 
+import type { OcrMode } from "../types";
+
 export type OcrFileKind = "pdf" | "docx";
+
+/**
+ * Whole-page mode needs pages to render, which a Word document does not have.
+ * Lives here, not in `source.ts`, so the mode toggle can ask without pulling
+ * the pdf.js and JSZip extraction modules into the page's first load.
+ */
+export function isModeAvailable(kind: OcrFileKind, mode: OcrMode): boolean {
+  return !(kind === "docx" && mode === "pages");
+}
 
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04]; // "PK\x03\x04"

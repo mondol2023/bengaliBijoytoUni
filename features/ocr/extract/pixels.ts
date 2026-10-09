@@ -66,19 +66,21 @@ export function toRgba(source: {
 }
 
 /**
- * Reads back a browser `ImageBitmap`. pdf.js hands JPEG-backed images over as
+ * Reads back a browser `ImageBitmap` (or `VideoFrame`). pdf.js hands JPEG-backed images over as
  * bitmaps where the browser can decode them natively, so the pixels only
  * exist inside the bitmap.
  */
 export function bitmapToRgba(
-  bitmap: { width: number; height: number },
+  bitmap: object,
   env: Pick<CanvasEnv, "createCanvas">,
+  /** Needed when the source has no `width`/`height`, as with the VideoFrame pdf.js uses for JPEGs. */
+  size: { width: number; height: number } = bitmap as { width: number; height: number },
 ): RawImage | null {
-  const canvas = env.createCanvas(bitmap.width, bitmap.height);
+  const canvas = env.createCanvas(size.width, size.height);
   const context = canvas.getContext("2d");
   if (!context) return null;
   context.drawImage(bitmap, 0, 0);
-  return context.getImageData(0, 0, bitmap.width, bitmap.height);
+  return context.getImageData(0, 0, size.width, size.height);
 }
 
 function clamped(data: Uint8Array | Uint8ClampedArray): Uint8ClampedArray {

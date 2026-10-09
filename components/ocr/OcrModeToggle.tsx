@@ -2,7 +2,7 @@
 
 import { useId } from "react";
 import type { OcrFileKind } from "@/features/ocr/job/fileKind";
-import { isModeAvailable } from "@/features/ocr/job/source";
+import { isModeAvailable } from "@/features/ocr/job/fileKind";
 import type { OcrMode } from "@/features/ocr/types";
 import { cn } from "@/lib/utils/cn";
 

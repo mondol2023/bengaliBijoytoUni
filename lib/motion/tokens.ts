@@ -25,6 +25,8 @@ export const motionTokens = {
     standard: [0.4, 0, 0.2, 1] as const,
     /** Aggressive ease-out — for a glyph snapping into legibility. */
     expoOut: [0.19, 1, 0.22, 1] as const,
+    /** Constant speed — for a scan line that sweeps at a steady rate, never a UI transition. */
+    linear: "linear" as const,
   },
   distance: {
     xs: 4,

@@ -137,17 +137,21 @@ export function useOcrJob(): {
 
         const pagesSeen = new Set<number>();
 
-        const firePagePreview = (page: number, render: NonNullable<OcrSource["renderPagePreview"]>) => {
-          const task: Promise<void> = (async () => {
-            const rendered = await render(page);
-            if (!rendered.ok || !isCurrent()) return;
-            const url = await runtime.toPreviewUrl(rendered.value, OCR_PREVIEW_MAX_EDGE_PX);
-            if (adopt(url)) send({ type: "pagePreview", page, url });
-          })()
+        /** Runs off the read path; a failed preview costs nothing but the picture. */
+        const fireTask = (run: () => Promise<void>) => {
+          const task: Promise<void> = run()
             .catch(() => {})
             .finally(() => pendingPreviews.delete(task));
           pendingPreviews.add(task);
         };
+
+        const firePagePreview = (page: number, render: NonNullable<OcrSource["renderPagePreview"]>) =>
+          fireTask(async () => {
+            const rendered = await render(page);
+            if (!rendered.ok || !isCurrent()) return;
+            const url = await runtime.toPreviewUrl(rendered.value, OCR_PREVIEW_MAX_EDGE_PX);
+            if (adopt(url)) send({ type: "pagePreview", page, url });
+          });
 
         const workItems: OcrWorkItem[] = activeSource.items.map((item) => ({
           id: item.id,
@@ -160,16 +164,15 @@ export function useOcrJob(): {
             const page = item.page;
             const isNewPage = page !== null && !pagesSeen.has(page);
             if (isNewPage) pagesSeen.add(page);
-            try {
+            // Not awaited: encoding the picture must not hold up the next item's decode.
+            fireTask(async () => {
               const url = await runtime.toPreviewUrl(image, OCR_PREVIEW_MAX_EDGE_PX);
               if (adopt(url)) {
                 send({ type: "preview", id: item.id, url });
                 // In whole-page mode the item is the page, so its preview is the page preview.
                 if (isNewPage && jobMode === "pages") send({ type: "pagePreview", page, url });
               }
-            } catch {
-              // A missing preview must not cost the item its text.
-            }
+            });
             if (isNewPage && jobMode !== "pages" && activeSource.renderPagePreview) {
               firePagePreview(page, activeSource.renderPagePreview);
             }

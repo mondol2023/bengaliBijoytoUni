@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FileText, RotateCcw, ScanText } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/Button";
@@ -66,6 +66,10 @@ function readouts(state: OcrJobState): Readout[] {
 export function OcrWorkspace() {
   const reducedMotion = usePrefersReducedMotion();
   const { state, file, setFile, mode, setMode, fileKind, start, cancel, reset } = useOcrJob();
+
+  // The hook keeps its engine between runs, so the download notice is only true until the first read starts.
+  const [engineKept, setEngineKept] = useState(false);
+  if (!engineKept && state.phase === "reading") setEngineKept(true);
 
   const busy = state.phase === "opening" || state.phase === "preparing" || state.phase === "reading";
   const hasRun = state.phase !== "idle";
@@ -184,6 +188,7 @@ export function OcrWorkspace() {
               state={state}
               mode={mode}
               fileKind={fileKind}
+              firstRun={!engineKept}
               onReadPages={readWholePages}
               onRetry={start}
             />

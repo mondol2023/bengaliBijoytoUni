@@ -20,12 +20,15 @@ export function OcrEmptyState({
   state,
   mode,
   fileKind,
+  firstRun,
   onReadPages,
   onRetry,
 }: {
   state: OcrJobState;
   mode: OcrMode;
   fileKind: OcrFileKind | null;
+  /** The reading engine has not been started yet in this visit, so the first read downloads it. */
+  firstRun: boolean;
   onReadPages: () => void;
   onRetry: () => void;
 }) {
@@ -45,8 +48,9 @@ export function OcrEmptyState({
     return (
       <div className="flex min-h-40 flex-col gap-3 px-5 py-7">
         <p className="max-w-[52ch] text-[15px] leading-relaxed">
-          The first time you use this page, your browser downloads the Bengali reading engine. It keeps it, so next
-          time this step is instant.
+          {firstRun
+            ? "The first time you use this page, your browser downloads the Bengali reading engine. It keeps it, so next time this step is instant."
+            : "Getting the reading engine ready."}
         </p>
       </div>
     );

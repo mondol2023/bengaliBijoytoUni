@@ -89,7 +89,7 @@ describe("jobMarker", () => {
     expect(jobMarker(state({ phase: "reading", items: [meta("page-1", 1), meta("page-2", 2)] }))).toBe(
       "Reading · 2 pages",
     );
-    expect(jobMarker(state({ phase: "reading", items: [meta("img-1", null)] }))).toBe("Reading · 1 images");
+    expect(jobMarker(state({ phase: "reading", items: [meta("img-1", null)] }))).toBe("Reading · 1 image");
   });
   it("done and cancelled", () => {
     const outcomes: Record<string, ItemOutcome> = {

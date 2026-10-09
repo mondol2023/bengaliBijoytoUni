@@ -157,7 +157,7 @@ function PageSweep() {
       className="pointer-events-none absolute inset-x-0 h-0.5 bg-accent"
       initial={{ top: "0%" }}
       animate={{ top: "100%" }}
-      transition={{ duration: motionTokens.duration.deliberate, ease: "linear", repeat: Infinity }}
+      transition={{ duration: motionTokens.duration.deliberate, ease: motionTokens.easing.linear, repeat: Infinity }}
     />
   );
 }

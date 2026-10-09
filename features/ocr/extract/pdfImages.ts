@@ -43,7 +43,8 @@ interface PdfImageObject {
   height: number;
   kind?: number;
   data?: Uint8Array | Uint8ClampedArray;
-  bitmap?: { width: number; height: number };
+  /** An `ImageBitmap`, or a `VideoFrame` in current Chromium; neither is read for its own size. */
+  bitmap?: object;
 }
 
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
@@ -106,7 +107,7 @@ function isReadable(image: PdfImageObject): boolean {
 function imageToRgba(image: PdfImageObject, env: ScanOptions["env"]): RawImage | null {
   if (!isReadable(image)) return null;
   if (image.data) return toRgba({ width: image.width, height: image.height, kind: image.kind ?? 0, data: image.data });
-  return image.bitmap && env ? bitmapToRgba(image.bitmap, env) : null;
+  return image.bitmap && env ? bitmapToRgba(image.bitmap, env, image) : null;
 }
 
 function extractionFailed(cause: unknown): Result<never> {

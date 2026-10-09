@@ -70,7 +70,7 @@ export function jobMarker(state: OcrJobState): string {
     case "preparing":
       return "Preparing";
     case "reading":
-      return `Reading · ${state.items.length} ${unitOf(state.items)}s`;
+      return `Reading · ${state.items.length} ${unitOf(state.items)}${state.items.length === 1 ? "" : "s"}`;
     case "done": {
       const { read, check } = tally(state);
       return `${read} read · ${check} to check`;

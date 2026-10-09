@@ -18,6 +18,7 @@ import type { OpenPdf, OpenPdfOptions } from "../extract/openPdf";
 import { createRowRenderer, scanPdfImages } from "../extract/pdfImages";
 import { renderPdfPage } from "../extract/pdfPages";
 import type { Box, OcrMode, RawImage } from "../types";
+import { isModeAvailable } from "./fileKind";
 import type { OcrFileKind } from "./fileKind";
 
 export type { OcrFileKind } from "./fileKind";
@@ -61,11 +62,6 @@ export interface SourceDeps {
   canvas: CanvasEnv;
   pdf?: OpenPdfOptions;
   signal?: AbortSignal;
-}
-
-/** Whole-page mode needs pages to render, which a Word document does not have. */
-export function isModeAvailable(kind: OcrFileKind, mode: OcrMode): boolean {
-  return !(kind === "docx" && mode === "pages");
 }
 
 const NO_SKIPS = { decorative: 0, duplicate: 0, tinyRow: 0 };
@@ -215,7 +211,10 @@ async function buildPdfSource(pdf: OpenPdf, mode: OcrMode, deps: SourceDeps): Pr
   });
 }
 
-/** One page at bed-display size: no sharper than the OCR render, no bigger than the bed edge needs. */
+/**
+ * One page at bed-display size: no sharper than the OCR render, no bigger than the bed edge needs.
+ * No `page.cleanup()`: the proxy is shared with the row renderer, which releases the page when it moves on.
+ */
 async function renderBedPreview(
   pdf: OpenPdf,
   pageNumber: number,
@@ -223,29 +222,25 @@ async function renderBedPreview(
 ): Promise<Result<RawImage>> {
   try {
     const page = await pdf.doc.getPage(pageNumber);
-    try {
-      const natural = page.getViewport({ scale: 1 });
-      const longEdge = Math.max(natural.width, natural.height);
-      const scale = Math.min(OCR_BED_PAGE_MAX_EDGE_PX / longEdge, pageRenderScale(natural.width, natural.height));
-      const viewport = page.getViewport({ scale });
-      const width = Math.max(1, Math.floor(viewport.width));
-      const height = Math.max(1, Math.floor(viewport.height));
+    const natural = page.getViewport({ scale: 1 });
+    const longEdge = Math.max(natural.width, natural.height);
+    const scale = Math.min(OCR_BED_PAGE_MAX_EDGE_PX / longEdge, pageRenderScale(natural.width, natural.height));
+    const viewport = page.getViewport({ scale });
+    const width = Math.max(1, Math.floor(viewport.width));
+    const height = Math.max(1, Math.floor(viewport.height));
 
-      const canvas = env.createCanvas(width, height);
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("no 2D canvas context");
+    const canvas = env.createCanvas(width, height);
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("no 2D canvas context");
 
-      await page.render({
-        canvas: canvas as unknown as HTMLCanvasElement,
-        canvasContext: context as unknown as CanvasRenderingContext2D,
-        viewport,
-        background: "rgb(255,255,255)",
-      }).promise;
+    await page.render({
+      canvas: canvas as unknown as HTMLCanvasElement,
+      canvasContext: context as unknown as CanvasRenderingContext2D,
+      viewport,
+      background: "rgb(255,255,255)",
+    }).promise;
 
-      return ok(context.getImageData(0, 0, width, height));
-    } finally {
-      page.cleanup();
-    }
+    return ok(context.getImageData(0, 0, width, height));
   } catch (cause) {
     return err(
       AppErrors.fileProcessing(`Could not render page ${pageNumber} of this PDF.`, {

@@ -240,3 +240,30 @@ Status check first: `tsc`, `lint`, `vitest` (133 files / 2235 tests) and `build`
 - **Orchestrator:** a throwing `onItem` (e.g. a UI bug) no longer rejects `runOcrJob` while other workers keep running; an engine that throws instead of returning a `Result` fails that one item; a throwing `warmUp` becomes an error result. After a cancel, a *failed* outcome is treated as unfinished (it is almost always the dispose cutting the pass off), so the UI won't show "failed" cards for items the user stopped.
 
 Still open (needs Phase 4's real browser): the start/recognize timeouts are not tuned on a slow phone; the half-started worker after a start *failure* is still unreachable (bounded to `OCR_WORKER_START_ATTEMPTS` per language per job now).
+
+## 15. Phase 4 status (2026-10-09) — done, uncommitted
+
+The `/ocr` page ("Scanner bed" design) on top of the Phase 1-3 engine. `npx tsc --noEmit`, `npm run lint`, `npx vitest run` (141 files / 2393 tests) and `npm run build` are green; `/ocr` is a static route in the build output. New browser smoke test `tests/ocr.spec.ts` (Playwright; builds a picture-of-text PDF, reads it in Whole pages mode, checks Copy all and the `.ocr.txt` download, fails on any console error or CSP violation) passes on chromium, firefox and webkit against a production `next start` (chromium also against `next dev`).
+
+Built: pure job modules in `features/ocr/job/` (`fileKind`, `source`, `jobState`, `view`, `browserRuntime`), `hooks/useOcrJob.ts`, `components/ocr/*`, `app/ocr/page.tsx`, the `OCR_NOTE` privacy line in `lib/privacy/disclosure.ts`. `features/**` does not import `lib/ai`; the `/ocr` route is 312 KB of client JS (pdf.js and Tesseract are lazy, loaded on first use), and the other routes moved by only 143-723 B against the Step 0 baseline (the additive `label` / `aria-label` props on `CopyButton` and `Progress`).
+
+Deviations / decisions:
+- **`OcrResultRow` instead of `OcrItemCard`**, and **no `aria-live` results region**: a long run would announce every row; the summary bar's marker is the live status.
+- **pdf.js decoder hosting under `/ocr/pdfjs/`** (synced with the rest of `public/ocr/`); the pdf.js option names were confirmed in Task 1.
+- **An error ends in "Stopped · N read"**, the same wording as a cancel (`view.test.ts` locks it); the alert above it carries the reason.
+- Whole pages mode is offered from "nothing found" as "Read whole pages". The file input and Start over are disabled while a job runs, so a second file cannot start mid-run.
+
+Two bugs only a real browser could show, both fixed test-first:
+- **Shared page proxy race.** `renderBedPreview` called `page.cleanup()` on the proxy the row renderer was using; pdf.js then dropped `page.objs`, so the next row waited out the 10 s `IMAGE_WAIT_MS`, and the 211-line court PDF crawled at ~10 s/line. The preview no longer cleans up (`source.test.ts` "keeps reading rows on a page whose preview was rendered"). Now ~60 s.
+- **JPEG pages failed as "corrupted".** pdf.js 6 hands Chromium a WebCodecs `VideoFrame` (no `width`/`height`) as `image.bitmap`, so `getImageData` threw. `bitmapToRgba` now takes the size from the image object (`pixels.test.ts`). CamScanner PDFs read.
+
+Measured (this machine, headless chromium): court PDF, 211 lines ≈ 60-65 s (dev); CamScanner PDF, 5 rows, 69 s dev / 83 s prod; DOCX, 2 images, 2.1 s dev / 2.3 s prod; 12-page PDF in Whole pages mode ≈ 79 s (dev); cancel mid-run settles in 0.8 s and keeps the rows read; blocked `/ocr/lang/*` shows the error in 1.3 s; a second visit makes 0 `traineddata` requests (IndexedDB cache); smoke test 5-7 s. Two OCR runs at once roughly double a run's time, so time one at a time.
+
+Checked at 360 px (headless): nothing inside `<main>` overflows, in light and dark; the first Tab stop is Start over.
+
+Open items:
+- **Site header overflows at 360 px** (131 px, identical on `/`, `/compare`, `/documents`; not from `/ocr`). Pre-existing, left alone.
+- **WebKit blocks Firebase auth's `apis.google.com` loader** under the site-wide CSP on every route; the smoke test filters it.
+- Tesseract's core prints "Image too small to scale!!" / "Line cannot be recognized!!" to the console for strips under 3 px wide (CamScanner logo, tiny rows). Harmless, the rows come back empty; not filtered in the test because the test PDF does not trigger it.
+- Not verified: a real touch device, a screen-reader pass, reduced-motion behaviour (only the layout was checked with it emulated), scroll smoothness and blob-URL cleanup on the 211-row result, and the start/recognize timeouts on a slow phone (still provisional from §14).
+- Phase 5 (provider fallback for low-confidence rows) is not started; the Gemini model default from §11 still needs resolving first.

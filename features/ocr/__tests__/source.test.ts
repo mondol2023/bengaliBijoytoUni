@@ -1,7 +1,8 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { detectOcrFileKind } from "../job/fileKind";
-import { isModeAvailable, prepareOcrSource, type OcrFileKind, type OcrSource } from "../job/source";
+import { isModeAvailable } from "../job/fileKind";
+import { prepareOcrSource, type OcrFileKind, type OcrSource } from "../job/source";
 import type { PdfjsLoader } from "../extract/openPdf";
 import type { OcrMode } from "../types";
 import { nodeCanvasEnv, solidPng } from "./helpers/nodeCanvas";
@@ -122,6 +123,22 @@ describe("prepareOcrSource (PDF, embedded)", () => {
       await source.dispose();
     }
   });
+
+  // The bed preview shares the page proxy with the row renderer; cleaning it up there dropped the
+  // image objects mid-page, and every later row waited out the 10 s image timeout.
+  it("keeps reading rows on a page whose preview was rendered", async () => {
+    const source = await prepare(embeddedPdf(), "pdf", "embedded");
+    try {
+      expect(await source.items[0].load()).not.toBeNull();
+      const preview = await source.renderPagePreview!(1);
+      expect(preview.ok).toBe(true);
+      const started = Date.now();
+      expect(await source.items[1].load()).not.toBeNull();
+      expect(Date.now() - started).toBeLessThan(3_000);
+    } finally {
+      await source.dispose();
+    }
+  }, 20_000);
 
   it("returns ok with no items for a PDF that has no images", async () => {
     const source = await prepare(buildPdf([{ ...PAGE, content: "" }]), "pdf", "embedded");

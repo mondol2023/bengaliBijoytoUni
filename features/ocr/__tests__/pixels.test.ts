@@ -66,6 +66,26 @@ describe("bitmapToRgba", () => {
     expect(px(image!, 2, 1)).toEqual([0, 255, 0, 255]);
   });
 
+  // pdf.js hands back a WebCodecs VideoFrame for JPEGs: it has displayWidth, not width.
+  it("takes the size from the caller when the source has none", () => {
+    const calls: number[][] = [];
+    const env = {
+      createCanvas: (w: number, h: number) => ({
+        width: w,
+        height: h,
+        getContext: () => ({
+          drawImage() {},
+          getImageData: (...args: number[]) => {
+            calls.push(args);
+            return { width: args[2], height: args[3], data: new Uint8ClampedArray(args[2] * args[3] * 4) };
+          },
+        }),
+      }),
+    };
+    expect(bitmapToRgba({}, env, { width: 3, height: 2 })).toMatchObject({ width: 3, height: 2 });
+    expect(calls).toEqual([[0, 0, 3, 2]]);
+  });
+
   it("returns null when the environment gives no 2D context", () => {
     const noContext = { createCanvas: () => ({ width: 1, height: 1, getContext: () => null }) };
     expect(bitmapToRgba({ width: 1, height: 1 }, noContext)).toBeNull();
