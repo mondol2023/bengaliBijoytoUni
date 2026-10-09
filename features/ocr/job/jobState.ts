@@ -5,9 +5,10 @@
  */
 import type { SafeErrorResponse } from "@/lib/errors/handlers";
 import type { ItemOutcome } from "../engine/orchestrator";
+import type { ImproveState } from "../fallback/improvePass";
 import type { OcrItemMeta, OcrSource, OcrSourcePage } from "./source";
 
-export type OcrPhase = "idle" | "opening" | "preparing" | "reading" | "done" | "cancelled" | "error";
+export type OcrPhase = "idle" | "opening" | "preparing" | "reading" | "improving" | "done" | "cancelled" | "error";
 
 export interface OcrJobState {
   phase: OcrPhase;
@@ -24,6 +25,10 @@ export interface OcrJobState {
   skipped: OcrSource["skipped"];
   unreadable: number;
   error: SafeErrorResponse | null;
+  /** AI readings laid over `outcomes`, which are never overwritten, so the Tesseract text can come back. */
+  improvements: Record<string, ImproveState>;
+  /** Lines in the automatic pass, fixed when it starts. */
+  improveTotal: number;
 }
 
 export type OcrJobAction =
@@ -43,6 +48,10 @@ export type OcrJobAction =
   | { type: "itemDone"; jobId: number; outcome: ItemOutcome }
   | { type: "finished"; jobId: number; cancelled: boolean }
   | { type: "failed"; jobId: number; error: SafeErrorResponse }
+  /** `pass` is the automatic run after a job; a single-line improve leaves the phase alone. */
+  | { type: "improveStarted"; jobId: number; ids: string[]; pass: boolean }
+  | { type: "improveUpdate"; jobId: number; id: string; state: ImproveState }
+  | { type: "improveFinished"; jobId: number }
   | { type: "reset" };
 
 export const initialOcrJobState: OcrJobState = {
@@ -57,6 +66,8 @@ export const initialOcrJobState: OcrJobState = {
   skipped: { decorative: 0, duplicate: 0, tinyRow: 0 },
   unreadable: 0,
   error: null,
+  improvements: {},
+  improveTotal: 0,
 };
 
 export function ocrJobReducer(state: OcrJobState, action: OcrJobAction): OcrJobState {
@@ -67,7 +78,10 @@ export function ocrJobReducer(state: OcrJobState, action: OcrJobAction): OcrJobS
   if (state.phase === "idle") return state;
   if (
     (action.type === "finished" || action.type === "failed") &&
-    (state.phase === "done" || state.phase === "cancelled" || state.phase === "error")
+    (state.phase === "done" ||
+      state.phase === "improving" ||
+      state.phase === "cancelled" ||
+      state.phase === "error")
   ) {
     return state;
   }
@@ -100,6 +114,23 @@ export function ocrJobReducer(state: OcrJobState, action: OcrJobAction): OcrJobS
       return { ...state, phase: action.cancelled ? "cancelled" : "done", reading: [] };
     case "failed":
       return { ...state, phase: "error", error: action.error, reading: [] };
+    case "improveStarted": {
+      const improvements = { ...state.improvements };
+      for (const id of action.ids) improvements[id] = { status: "running" };
+      if (action.pass && state.phase === "done") {
+        return { ...state, phase: "improving", improveTotal: action.ids.length, improvements };
+      }
+      return { ...state, improvements };
+    }
+    case "improveUpdate":
+      return { ...state, improvements: { ...state.improvements, [action.id]: action.state } };
+    case "improveFinished": {
+      const entries = Object.entries(state.improvements);
+      const settled = entries.filter(([, improvement]) => improvement.status !== "running");
+      const phase = state.phase === "improving" ? "done" : state.phase;
+      if (settled.length === entries.length && phase === state.phase) return state;
+      return { ...state, phase, improvements: Object.fromEntries(settled) };
+    }
   }
 }
 

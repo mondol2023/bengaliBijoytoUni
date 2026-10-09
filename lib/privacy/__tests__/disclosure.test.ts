@@ -15,6 +15,7 @@ import {
   CONVERTER_NOTE,
   DOCUMENTS_NOTE,
   FOOTER_LINK_LABEL,
+  OCR_AI_NOTE,
   OCR_NOTE,
   PRIVACY_LINK_LABEL,
   PRIVACY_PAGE_INTRO,
@@ -35,6 +36,7 @@ const allCopy: { label: string; value: Bilingual }[] = [
   { label: "DOCUMENTS_NOTE", value: DOCUMENTS_NOTE },
   { label: "AI_TRANSCRIPTION_NOTE", value: AI_TRANSCRIPTION_NOTE },
   { label: "OCR_NOTE", value: OCR_NOTE },
+  { label: "OCR_AI_NOTE", value: OCR_AI_NOTE },
   { label: "PRIVACY_LINK_LABEL", value: PRIVACY_LINK_LABEL },
   { label: "FOOTER_LINK_LABEL", value: FOOTER_LINK_LABEL },
   { label: "PRIVACY_PAGE_TITLE", value: PRIVACY_PAGE_TITLE },
@@ -121,6 +123,34 @@ describe("the disclosure copy is complete in both languages", () => {
   it("tells the text-from-images page's reader the file stays in the browser", () => {
     expect(OCR_NOTE.en).toContain("not uploaded");
     expect(OCR_NOTE.en).toContain("downloads the reading engine");
+  });
+
+  it("tells the text-from-images page's reader that cropped lines go to an AI service, and only those", () => {
+    expect(OCR_AI_NOTE.en).toContain("sent to an AI service");
+    expect(OCR_AI_NOTE.en).toContain("never the whole file");
+    expect(OCR_AI_NOTE.en).toContain("We do not store them");
+  });
+
+  it("never lets the AI note contradict itself by saying the file stays in the browser", () => {
+    // It replaces OCR_NOTE while improve is on; "not uploaded" next to "sent to an AI service" is a lie.
+    for (const lang of ["en", "bn"] as const) {
+      expect(OCR_AI_NOTE[lang].toLowerCase()).not.toContain("never leaves");
+      expect(OCR_AI_NOTE[lang].toLowerCase()).not.toContain("not uploaded");
+    }
+    expect(OCR_AI_NOTE.bn).not.toContain("আপলোড হয় না");
+  });
+
+  it("keeps the plain OCR note free of any AI claim, since it is shown when improve is off", () => {
+    expect(OCR_NOTE.en).not.toMatch(/\bAI\b/);
+    expect(OCR_NOTE.en).toContain("not uploaded");
+  });
+
+  it("names the OCR crops in the AI section of the privacy page", () => {
+    const ai = PRIVACY_PAGE_SECTIONS.find((s) => s.heading.en === "Where AI is, and is not, used");
+    expect(ai, "AI section").toBeDefined();
+    const english = ai!.body.map((b) => b.en).join(" ");
+    expect(english).toContain("text-from-images");
+    expect(english).toContain("cropped");
   });
 
   it("promises deletion only in the form the code can keep", () => {

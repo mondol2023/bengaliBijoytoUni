@@ -133,6 +133,27 @@ export const OCR_NOTE: Bilingual = {
 };
 
 /**
+ * Shown on the text-from-images page *instead of* `OCR_NOTE` (never beside it: two
+ * contradictory lines is worse than one) whenever the user is signed in and "Improve hard
+ * lines with AI" is on and available. `OCR_NOTE` stays accurate in every other state.
+ *
+ * True because `app/api/ocr/improve/route.ts` accepts only cropped line images (never the
+ * file) and `lib/ai/ocrImages.ts` hands them to the provider chain and keeps nothing.
+ * What the provider itself retains is its own terms, which this line must not deny.
+ * The Bengali is a draft awaiting native review.
+ */
+export const OCR_AI_NOTE: Bilingual = {
+  en:
+    "Lines that read poorly are sent to an AI service (Google) to be read again. Only those " +
+    "cropped line images are sent, never the whole file, and only while this is switched on. " +
+    "We do not store them.",
+  bn:
+    "যে লাইনগুলো ভালোভাবে পড়া যায়নি, সেগুলো আবার পড়ার জন্য একটি এআই সেবায় (গুগল) পাঠানো হয়। " +
+    "শুধু সেই লাইনগুলোর কাটা ছবি পাঠানো হয়, পুরো ফাইল কখনো নয়, আর তা-ও কেবল এটি চালু থাকলে। " +
+    "আমরা সেগুলো সংরক্ষণ করি না।",
+};
+
+/**
  * Next to the "Convert with Gemini" control on the documents page.
  * `app/api/ai/transcribe/route.ts`, `lib/ai/transcribeDocument.ts`,
  * `hooks/useDocumentConversion.ts` (the automatic trigger and its switch).
@@ -336,6 +357,20 @@ export const PRIVACY_PAGE_SECTIONS: DisclosureSection[] = [
         bn:
           "আপনার রূপান্তরে কখনো কোনো এআই সেবা যুক্ত হয় না। কনভার্টার হলো ম্যাপিং নিয়মের একটি সেট, " +
           "এবং তা আপনার ব্রাউজারেই চলে।",
+      },
+      {
+        // `app/api/ocr/improve/route.ts`, `lib/ai/ocrImages.ts`; the switch is `OCR_GEMINI_ENABLED`.
+        en:
+          "The text-from-images page is the exception, and only when you are signed in and leave " +
+          "“Improve hard lines with AI” on. Lines it read poorly are then sent as small cropped " +
+          "images to Google Gemini to be read again — never the whole file. We do not store them; " +
+          "Google processes them under its own terms. Turn the option off and nothing is sent.",
+        bn:
+          "টেক্সট-ফ্রম-ইমেজেস পাতা এর ব্যতিক্রম, আর তা শুধু তখনই যখন আপনি সাইন ইন করা থাকেন এবং " +
+          "“Improve hard lines with AI” চালু রাখেন। তখন যে লাইনগুলো ভালোভাবে পড়া যায়নি সেগুলোর ছোট " +
+          "কাটা ছবি আবার পড়ার জন্য গুগল জেমিনিতে পাঠানো হয় — পুরো ফাইল কখনো নয়। আমরা সেগুলো " +
+          "সংরক্ষণ করি না; গুগল নিজের শর্ত অনুযায়ী সেগুলো প্রক্রিয়া করে। অপশনটি বন্ধ করলে কিছুই " +
+          "পাঠানো হয় না।",
       },
       {
         en:

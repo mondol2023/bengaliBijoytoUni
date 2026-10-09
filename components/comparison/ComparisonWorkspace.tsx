@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { RotateCcw, Sparkles } from "lucide-react";
 import { MicroButton } from "@/components/ui/MicroButton";
@@ -15,6 +15,7 @@ import { SaveToHistoryButton } from "@/components/history/SaveToHistoryButton";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useComparison } from "@/hooks/useComparison";
 import { useSpellcheck } from "@/hooks/useSpellcheck";
+import { useComparePrefill } from "@/hooks/useComparePrefill";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { SAMPLE_SOURCE, SAMPLE_TARGET } from "@/features/comparison/sampleText";
 import type { DiffMode } from "@/features/comparison/engine/diffEngine";
@@ -57,6 +58,14 @@ export function ComparisonWorkspace() {
     clear,
   } = useComparison();
   const spelling = useSpellcheck(comparedTexts);
+
+  // Text handed over from /ocr lands in Source; the note says where it came from and what to add next.
+  const [fromOcr, setFromOcr] = useState(false);
+  useComparePrefill((text) => {
+    source.setMode("text");
+    source.setText(text);
+    setFromOcr(true);
+  });
 
   // Marks must be computed from the exact texts the diff ran on (`comparedTexts`),
   // not the live input, or their offsets would drift from the segments.
@@ -168,6 +177,22 @@ export function ComparisonWorkspace() {
         </div>
         <TierSelector tier={tier} onChange={setTier} />
       </motion.div>
+
+      <AnimatePresence>
+        {fromOcr && (
+          <motion.p
+            key="from-ocr"
+            role="status"
+            initial={reducedMotion ? false : { opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={reducedMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+            transition={{ duration: motionTokens.duration.fast, ease: motionTokens.easing.standard }}
+            className="mt-6 overflow-hidden text-sm text-foreground/70"
+          >
+            Source holds your OCR reading. Add the reference text as Target to see where they differ.
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       {/* One sheet, two galleys: source and target side by side, split by a hairline. */}
       <motion.section

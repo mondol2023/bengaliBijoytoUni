@@ -161,6 +161,97 @@ describe("ocrJobReducer", () => {
     expect(state).toEqual(snapshot);
   });
 
+  describe("improvements", () => {
+    const AI = { status: "done", text: "এআই", provider: "gemini", model: "m" } as const;
+    const finishedJob = (jobId = 1) => ocrJobReducer(started(jobId), { type: "finished", jobId, cancelled: false });
+    const cancelledJob = (jobId = 1) => ocrJobReducer(started(jobId), { type: "finished", jobId, cancelled: true });
+
+    it("a pass start marks the ids running and moves done to improving with a fixed total", () => {
+      const state = ocrJobReducer(finishedJob(), { type: "improveStarted", jobId: 1, ids: ["a", "b"], pass: true });
+      expect(state.phase).toBe("improving");
+      expect(state.improveTotal).toBe(2);
+      expect(state.improvements).toEqual({ a: { status: "running" }, b: { status: "running" } });
+    });
+
+    it("a single-line start leaves the phase alone, so cancelled stays cancelled and done stays done", () => {
+      const cancelled = ocrJobReducer(cancelledJob(), { type: "improveStarted", jobId: 1, ids: ["a"], pass: false });
+      expect(cancelled.phase).toBe("cancelled");
+      expect(cancelled.improvements).toEqual({ a: { status: "running" } });
+      expect(cancelled.improveTotal).toBe(0);
+      const finished = ocrJobReducer(finishedJob(), { type: "improveStarted", jobId: 1, ids: ["a"], pass: false });
+      expect(finished.phase).toBe("done");
+    });
+
+    it("a pass start does not move a job that is not done", () => {
+      const state = ocrJobReducer(cancelledJob(), { type: "improveStarted", jobId: 1, ids: ["a"], pass: true });
+      expect(state.phase).toBe("cancelled");
+    });
+
+    it("improveUpdate stores the state for one id and leaves the others", () => {
+      let state = ocrJobReducer(finishedJob(), { type: "improveStarted", jobId: 1, ids: ["a", "b"], pass: true });
+      state = ocrJobReducer(state, { type: "improveUpdate", jobId: 1, id: "a", state: AI });
+      expect(state.improvements).toEqual({ a: AI, b: { status: "running" } });
+    });
+
+    it("returns the identical object for a stale jobId", () => {
+      const state = finishedJob(2);
+      const actions: OcrJobAction[] = [
+        { type: "improveStarted", jobId: 1, ids: ["a"], pass: true },
+        { type: "improveUpdate", jobId: 1, id: "a", state: AI },
+        { type: "improveFinished", jobId: 1 },
+      ];
+      for (const action of actions) expect(ocrJobReducer(state, action)).toBe(state);
+    });
+
+    it("improveFinished removes leftover running entries and returns improving to done", () => {
+      let state = ocrJobReducer(finishedJob(), { type: "improveStarted", jobId: 1, ids: ["a", "b"], pass: true });
+      state = ocrJobReducer(state, { type: "improveUpdate", jobId: 1, id: "a", state: AI });
+      state = ocrJobReducer(state, { type: "improveFinished", jobId: 1 });
+      expect(state.phase).toBe("done");
+      expect(state.improvements).toEqual({ a: AI });
+    });
+
+    it("improveFinished leaves cancelled alone", () => {
+      let state = ocrJobReducer(cancelledJob(), { type: "improveStarted", jobId: 1, ids: ["a"], pass: false });
+      state = ocrJobReducer(state, { type: "improveFinished", jobId: 1 });
+      expect(state.phase).toBe("cancelled");
+      expect(state.improvements).toEqual({});
+    });
+
+    it("improveFinished returns the same object when there is nothing to change", () => {
+      const state = finishedJob();
+      expect(ocrJobReducer(state, { type: "improveFinished", jobId: 1 })).toBe(state);
+    });
+
+    it("a late finished or failed during improving is ignored", () => {
+      const state = ocrJobReducer(finishedJob(), { type: "improveStarted", jobId: 1, ids: ["a"], pass: true });
+      expect(ocrJobReducer(state, { type: "finished", jobId: 1, cancelled: true })).toBe(state);
+      expect(ocrJobReducer(state, { type: "failed", jobId: 1, error: ERROR })).toBe(state);
+    });
+
+    it("start and reset clear improvements", () => {
+      const state = ocrJobReducer(finishedJob(), { type: "improveStarted", jobId: 1, ids: ["a"], pass: true });
+      expect(ocrJobReducer(state, { type: "start", jobId: 2 })).toEqual({
+        ...initialOcrJobState,
+        phase: "opening",
+        jobId: 2,
+      });
+      expect(ocrJobReducer(state, { type: "reset" })).toEqual({ ...initialOcrJobState, jobId: 1 });
+      expect(initialOcrJobState.improvements).toEqual({});
+      expect(initialOcrJobState.improveTotal).toBe(0);
+    });
+
+    it("ignores improve actions after reset while idle", () => {
+      const idle = ocrJobReducer(finishedJob(3), { type: "reset" });
+      const actions: OcrJobAction[] = [
+        { type: "improveStarted", jobId: 3, ids: ["a"], pass: true },
+        { type: "improveUpdate", jobId: 3, id: "a", state: AI },
+        { type: "improveFinished", jobId: 3 },
+      ];
+      for (const action of actions) expect(ocrJobReducer(idle, action)).toBe(idle);
+    });
+  });
+
   it("blobUrlsOf returns every item and page preview URL", () => {
     let state = started(1);
     state = ocrJobReducer(state, { type: "preview", jobId: 1, id: "a", url: "blob:a" });

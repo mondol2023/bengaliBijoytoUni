@@ -23,7 +23,11 @@ export function OcrProgress({
   padded?: boolean;
 }) {
   const reducedMotion = usePrefersReducedMotion();
-  const total = state.items.length;
+  const improving = state.phase === "improving";
+  const total = improving ? state.improveTotal : state.items.length;
+  const done = improving
+    ? Object.values(state.improvements).filter((improvement) => improvement.status !== "running").length
+    : Object.keys(state.outcomes).length;
   const indeterminate = state.phase === "opening" || state.phase === "preparing" || total === 0;
 
   return (
@@ -55,9 +59,9 @@ export function OcrProgress({
         </div>
       ) : (
         <Progress
-          value={Object.keys(state.outcomes).length}
+          value={done}
           max={total}
-          aria-label="Items read"
+          aria-label={improving ? "Lines read again with AI" : "Items read"}
           className="h-0.5 rounded-none"
         />
       )}

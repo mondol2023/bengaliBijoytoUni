@@ -51,6 +51,7 @@ Mapping accuracy is **iteratively converging, not finished** — rare conjuncts 
 
 - **Text converter** (`/converter`) — live, debounced conversion with encoding auto-detect/override, copy/download/clear, and non-whitespace character counting against usage tiers.
 - **Document processing** (`/documents`) — upload `.pdf` (via `unpdf`), `.docx` (via `mammoth`), `.txt`, or `.doc` (via `word-extractor`, explicitly best-effort — see [Problems we faced](#problems-we-faced-and-how-we-handled-them)). Extracted text flows through the exact same conversion engine as manual input.
+- **Text from images** (`/ocr`) — reads Bengali (and English) that is *pictured* inside a `.pdf` or `.docx`, where there is no text layer for the converter to work on. Choose *Embedded images* (each picture, with fragmented lines stitched back into rows) or *Whole pages*; the file is read in your browser with Tesseract, line by line beside the image it came from, with a per-line confidence and a "check this" flag. Signed-in users can have the hard lines re-read by an AI vision provider (only the cropped lines are sent, labelled "AI output"; off unless the deployment enables it). **Open in Compare** hands the reading to `/compare`.
 - **Comparison/diff** (`/compare`) — word- and paragraph-level diff between two text or file inputs, with similarity scoring and a structured (non-HTML-string) diff result. Misspelled **English** words on either side get a wavy underline in the diff, a "Typos in / out" figure and a summary with suggestions (British and US spelling both accepted; case/bank/land references like `123/2020` or `A/C 45/B` and legacy-encoded text are never flagged; toggle in the settings row).
 - **Usage tiers** — five free tiers gating characters per conversion, not features: Easy (3,000), Medium (8,000), Pro (20,000), Expert (50,000), Ultra (75,000) non-whitespace characters. No payment gating exists behind any of them.
 - **Accounts** — Email/Password and Google sign-in via Firebase Auth; enables saved conversion/comparison history. Not required to use the converter.
@@ -70,6 +71,7 @@ Mapping accuracy is **iteratively converging, not finished** — rare conjuncts 
 | Auth / DB / Storage | Firebase (client SDK + `firebase-admin` on the server) |
 | Validation | Zod, at every Firestore read/write boundary |
 | File extraction | `unpdf` (PDF), `mammoth` (DOCX), `word-extractor` (legacy DOC) |
+| OCR (`/ocr`) | `tesseract.js` (in the browser, self-hosted `ben`/`eng` data), `pdfjs-dist` (embedded images / page renders), `jszip` (DOCX media); optional Gemini fallback behind `lib/ai/registry.ts` |
 | Diffing | `diff` (word/line diff, wrapped by a custom similarity engine) |
 | Testing | Vitest |
 | Linting | ESLint 9 (flat config) |
@@ -81,6 +83,7 @@ app/                     Next.js App Router routes and API handlers
   converter/              Text converter page
   compare/                 Comparison/diff page
   documents/               File upload & extraction page
+  ocr/                     Text-from-images page (in-browser OCR)
   account/                 User history
   admin/                   Admin dashboard (server-gated layout)
   api/                     Route handlers (conversions, comparisons, documents,
@@ -89,6 +92,7 @@ features/                Feature-scoped logic paired with its own tests
   converter/               Conversion engine, encodings, constants
   comparison/               Diff/similarity engine, English spellcheck (spelling/)
   documents/                 Extraction config
+  ocr/                       OCR extraction, Tesseract engine, job state, AI-fallback client
   usage/                     Tier config & usage enforcement
   landing/                    Landing-page specimen components
 lib/
@@ -128,6 +132,14 @@ cp .env.local.example .env.local
 | `NEXT_PUBLIC_FIREBASE_*` | Client SDK config (safe to expose to the browser) — API key, auth domain, project ID, storage bucket, messaging sender ID, app ID |
 | `FIREBASE_ADMIN_PROJECT_ID` / `FIREBASE_ADMIN_CLIENT_EMAIL` / `FIREBASE_ADMIN_PRIVATE_KEY` / `FIREBASE_ADMIN_STORAGE_BUCKET` | Server-only Admin SDK service-account credentials — **never commit, never prefix with `NEXT_PUBLIC_`** |
 
+The optional AI re-read on `/ocr` is off unless configured (all server-only; fail-closed):
+
+| Variable | Purpose |
+|---|---|
+| `OCR_GEMINI_ENABLED` | Off unless exactly `true`/`1`/`yes`/`on`. Needs `GEMINI_API_KEY` |
+| `OCR_GEMINI_MODEL` | **Required, no default.** Unset means the provider is not configured. We use `gemini-3.5-flash-lite`; check any model on a real crop first |
+| `OCR_GEMINI_DAILY_CALL_BUDGET` | Calls per UTC day for this provider, separate from the resolution budget (default 100; junk means 0) |
+
 Until these are set, `isFirebaseConfigured` / `isFirebaseAdminConfigured` both resolve to `false` and the app runs fine with sign-in/persistence disabled.
 
 ## Scripts
@@ -140,6 +152,7 @@ npm run lint          # ESLint
 npm run test           # run the test suite once (Vitest)
 npm run test:watch      # run the test suite in watch mode
 npm run dict:sync        # re-copy the Hunspell spelling dictionaries into public/dictionaries/
+npm run ocr:sync         # copy the OCR runtime (tesseract, pdf.js, ben/eng data) into public/ocr/ (gitignored; runs before dev and build)
 ```
 
 ## Testing
@@ -191,6 +204,10 @@ Disclosed here rather than left implicit:
 - **There is no true "before" preview of the raw legacy-encoded text** (see [Problems we faced](#problems-we-faced-and-how-we-handled-them)) — only the converted Unicode output is rendered.
 
 - **Spellcheck covers English only and is a heuristic about *which* words to judge.** A capitalized word mid-sentence is treated as a name, a chunk containing a digit is treated as a reference, and a pure-ASCII legacy snippet with no marker characters looks like English. The deliberate list is in `docs/superpowers/specs/2026-10-05-compare-spellcheck-design.md`. The dictionaries (~1.1MB, licence `(MIT AND BSD)`) are fetched on first use and cached for a day.
+
+- **OCR is only as good as the picture.** Clean rendered Bengali reads at roughly 1 % character error; a photographed form is nearer 25 %. Tesseract is weakest on digits and some conjuncts (`৪নং` can come back as `8৪নং`), so every line with numbers is marked "verify numbers" and low-confidence lines are flagged. The confidence threshold was set from only a handful of hard real samples and is provisional. Native selectable text is deliberately not re-read (use Documents for that).
+- **The AI re-read sends cropped line images to a third party.** The page says so while it is on. On Google's free Gemini tier, content may be retained and reviewed; use a paid-tier key in production. Whole-pages mode sends page-sized images and its AI accuracy is unmeasured. The AI path has not yet been exercised end to end signed in against a live Firebase project.
+- **The site header overflows below ~640 px** (the `/ocr` link made it worse; a mobile menu is the real fix).
 
 ## Roadmap
 

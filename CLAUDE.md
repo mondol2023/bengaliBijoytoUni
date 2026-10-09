@@ -191,6 +191,56 @@ Things a future session would otherwise re-learn the hard way:
   across a diff boundary keeps its context); paragraph mode checks each segment on its own.
   `useComparison` exposes `comparedTexts` so offsets always match the diff's inputs.
 
+### OCR page (`/ocr`): text locked in images, read in the browser
+
+Reads pictures of text inside PDFs/DOCX (the conversion engine can't: there is no text layer).
+Free path is Tesseract in the browser; signed-in users can additionally have low-confidence
+lines re-read by an AI vision provider. Spec and phase-by-phase record: `docs/ocr-extraction-plan.md`
+(§11 has the measured Tesseract/Gemini numbers; §19 is the Phase 8 QA record); plans in
+`docs/superpowers/plans/2026-10-07-ocr-phase4-ui.md` and `…2026-10-08-ocr-phase5-ai-fallback.md`.
+Layout: `features/ocr/{extract,engine,job,fallback}` (pure/injectable, tested in Node),
+`hooks/useOcrJob.ts`, `components/ocr/*`, `lib/ai/ocrImages.ts` + `lib/ocr/*` + `app/api/ocr/improve`
+(server side). Things a future session would otherwise re-learn the hard way:
+
+- **Runtime assets are generated, not committed.** `npm run ocr:sync` (run by `predev`/`prebuild`)
+  copies tesseract.js, its three WASM cores, the `ben`/`eng` **`best_int`** data and pdf.js's worker,
+  wasm decoders, cmaps and fonts into `public/ocr/` (~17 MB, gitignored, ESLint-ignored). Use
+  `best_int`, never float `best`: it crashes the tesseract.js WASM core (`DotProductSSE`).
+- **The `/ocr` CSP is a separate, relaxed rule** (`'wasm-unsafe-eval'`, `worker-src 'self' blob:`,
+  `blob:` in `img-src` **and `connect-src`**), and the global rule's `source` *excludes* `/ocr`. Two CSP
+  headers on one route would intersect, so "relax on top" cannot work. `features/ocr/__tests__/csp.test.ts`
+  runs the rules through Next's own matcher; `blob:` in `connect-src` was only found by a real browser
+  (the improve pass `fetch`es a preview blob URL). Any new `/ocr` capability: check it in chromium,
+  firefox **and** webkit, not just unit tests.
+- **`features/**`, `components/ocr` and `hooks/useOcrJob.ts` never import `lib/ai`** (Guard B in
+  `lib/ai/__tests__/callSites.test.ts`, which requires all three roots to exist). The only route
+  importing `lib/ai/ocrImages.ts` is `app/api/ocr/improve/route.ts`. Don't loosen either.
+- **Run `ben` first; retry with `ben+eng` only if mean confidence < ~60.** `ben+eng` on Bengali pages
+  injects Latin garbage, `ben` alone is useless on English. Fallback threshold (< 82 mean confidence, or
+  empty output) is *provisional*, set from ~2 hard real samples.
+- **The AI chain is fail-closed and has no default model.** `OCR_GEMINI_ENABLED` off by default;
+  `OCR_GEMINI_MODEL` is required (the repo's older `gemini-2.5-flash` default 404s — `/api/ai/transcribe`
+  still has that bug). Own daily budget (`ocrCallBudget` collection, which had to be added to
+  `lib/firebase/sharedCounter.ts`'s allow-list or every production budget check fails closed). Chosen
+  model `gemini-3.5-flash-lite` (2.2 s/4-crop call; `gemini-3.5-flash` took 52 s, past the 25 s timeout).
+  Use a **paid-tier key** in production: free-tier Gemini content may be retained/reviewed by Google.
+- **`OCR_NOTE` ("The file is not uploaded") is only true while AI improve is off.** `OCR_AI_NOTE` replaces
+  it (never both) when signed in, enabled and available. Keep the privacy line and the behaviour in step.
+- **Row-fragment stitching matters.** Court PDFs draw each line as 3-10 image fragments; `filter.ts`
+  groups them into rows before OCR (0-1 % CER stitched vs garbage per-fragment). Dedupe is hash **and**
+  position (a glyph strip can legitimately repeat inside one line).
+- **pdf.js page proxies are shared:** never `page.cleanup()` a proxy the row renderer is using (it drops
+  `page.objs`; every following row then waits out a 10 s timeout). `openPdf` detaches its buffer, so the
+  hook reads `file.arrayBuffer()` fresh on every start.
+- **tesseract.js `terminate()` never rejects pending jobs, and a failed language load never settles.**
+  Everything in `engine/tesseract.ts` goes through `settle()` (timeout + dispose race); don't call a
+  worker directly.
+- Compare hand-off: `features/comparison/prefill.ts` stashes `{v:1,text,at}` in `sessionStorage`
+  (`c2u:compare-prefill`), taken once on mount and dropped after 2 minutes.
+- Browser e2e: `tests/ocr.spec.ts` runs against a **production** `next start`
+  (`OCR_E2E_BASE_URL=http://localhost:3000 npx playwright test tests/ocr.spec.ts`), all three browsers.
+  WebKit blocks Firebase's `apis.google.com` loader on every route; the test filters it.
+
 ### Route/feature layout
 
 `app/` is routes + API handlers only; real logic lives in `features/<domain>/` (paired with

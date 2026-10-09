@@ -2,7 +2,7 @@ import Link from "next/link";
 import { FOOTER_LINK_LABEL, PRIVACY_HREF } from "@/lib/privacy/disclosure";
 
 /**
- * A colophon rather than a sitemap. The app has four pages worth linking and
+ * A colophon rather than a sitemap. The app has a handful of pages worth linking and
  * two facts worth restating — an inflated footer would be furniture for a
  * product that does not exist yet.
  *
@@ -13,6 +13,7 @@ import { FOOTER_LINK_LABEL, PRIVACY_HREF } from "@/lib/privacy/disclosure";
 const LINKS = [
   { href: "/converter", label: "Converter" },
   { href: "/documents", label: "Documents" },
+  { href: "/ocr", label: "Text from images" },
   { href: "/compare", label: "Compare" },
   { href: PRIVACY_HREF, label: FOOTER_LINK_LABEL.en },
 ];

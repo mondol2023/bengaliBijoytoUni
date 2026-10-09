@@ -33,6 +33,8 @@ describe("Content-Security-Policy", () => {
       expect(policies[0]).toMatch(/script-src[^;]*'wasm-unsafe-eval'/);
       expect(policies[0]).toMatch(/worker-src 'self' blob:/);
       expect(policies[0]).toMatch(/img-src[^;]*blob:/);
+      // `fetch(blobUrl)` is how the AI-improve upload reads a line's preview back; `'self'` does not cover it.
+      expect(policies[0]).toMatch(/connect-src[^;]*blob:/);
     },
   );
 
@@ -54,7 +56,9 @@ describe("Content-Security-Policy", () => {
       expect(strict).toContain(directive);
       expect(ocr).toContain(directive);
     }
-    expect(ocr).toContain("connect-src 'self' https://*.googleapis.com https://*.google.com");
+    // Same hosts as the strict policy, plus `blob:` for reading a preview back before uploading it.
+    expect(strict).toContain("connect-src 'self' https://*.googleapis.com https://*.google.com");
+    expect(ocr).toContain("connect-src 'self' blob: https://*.googleapis.com https://*.google.com");
   });
 
   it("sends the same non-CSP security headers on /ocr as everywhere else", async () => {

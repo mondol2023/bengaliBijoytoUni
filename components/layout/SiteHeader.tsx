@@ -19,25 +19,31 @@ export function SiteHeader() {
           >
             অ
           </span>
-          <span>Convert2Uni</span>
+          <span className="max-sm:sr-only">Convert2Uni</span>
         </Link>
-        <div className="flex items-center gap-2">
-          <nav aria-label="Primary" className="flex items-center gap-1 text-sm">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <nav aria-label="Primary" className="flex items-center text-sm sm:gap-1">
             <Link
               href="/converter"
-              className="rounded-md px-3 py-2 font-medium text-foreground/80 transition-colors hover:bg-surface-muted hover:text-foreground"
+              className="rounded-md px-2 py-2 font-medium sm:px-3 text-foreground/80 transition-colors hover:bg-surface-muted hover:text-foreground"
             >
               Converter
             </Link>
             <Link
               href="/documents"
-              className="rounded-md px-3 py-2 font-medium text-foreground/80 transition-colors hover:bg-surface-muted hover:text-foreground"
+              className="rounded-md px-2 py-2 font-medium sm:px-3 text-foreground/80 transition-colors hover:bg-surface-muted hover:text-foreground"
             >
               Documents
             </Link>
             <Link
+              href="/ocr"
+              className="rounded-md px-2 py-2 font-medium sm:px-3 text-foreground/80 transition-colors hover:bg-surface-muted hover:text-foreground"
+            >
+              OCR
+            </Link>
+            <Link
               href="/compare"
-              className="rounded-md px-3 py-2 font-medium text-foreground/80 transition-colors hover:bg-surface-muted hover:text-foreground"
+              className="rounded-md px-2 py-2 font-medium sm:px-3 text-foreground/80 transition-colors hover:bg-surface-muted hover:text-foreground"
             >
               Compare
             </Link>

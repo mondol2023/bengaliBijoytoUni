@@ -230,26 +230,23 @@ describe("Guard B: the conversion path never imports lib/ai", () => {
  * `features/ocr`, the `/ocr` components and its hook run in the browser. They
  * may call `/api/ocr/improve`, but must never import anything under `lib/ai`
  * (it holds provider keys and `assertServerOnly` would throw there anyway).
- * Roots the browser UI adds later (`components/ocr`, `hooks/useOcrJob.ts`) are
- * scanned as soon as they exist; `features/ocr` must exist now.
+ * All three roots must exist: a rename would otherwise turn the scan into a
+ * silent no-op.
  */
 describe("Guard B: the OCR feature never imports lib/ai", () => {
   const roots = ["features/ocr", "components/ocr", "hooks/useOcrJob.ts"];
 
-  it("scans features/ocr, which must exist", () => {
-    expect(() => statSync(path.join(REPO_ROOT, "features/ocr"))).not.toThrow();
+  it("resolves every declared OCR root", () => {
+    for (const root of roots) {
+      expect(() => statSync(path.join(REPO_ROOT, root)), `${root} does not exist`).not.toThrow();
+    }
   });
 
   it("finds no import of lib/ai from any of them", () => {
     const offenders: string[] = [];
     for (const root of roots) {
       const full = path.join(REPO_ROOT, root);
-      let files: string[];
-      try {
-        files = statSync(full).isDirectory() ? listShippedSources(full) : [full];
-      } catch {
-        continue;
-      }
+      const files = statSync(full).isDirectory() ? listShippedSources(full) : [full];
       for (const file of files) {
         const contents = withoutComments(file);
         if (/(?:from|import)\s+["'][^"']*lib\/ai/.test(contents)) offenders.push(repoRelative(file));

@@ -25,7 +25,9 @@ const isDev = process.env.NODE_ENV !== "production";
 /**
  * `ocr` is true only for the `/ocr` page (and the self-hosted Tesseract files under it): the
  * recognition engine is WebAssembly running in a Web Worker, and it draws image crops from
- * `blob:` URLs. Those three relaxations are scoped to that route rather than granted everywhere.
+ * `blob:` URLs, and the AI-improve upload reads a line's preview back with `fetch(blobUrl)`, which
+ * `connect-src 'self'` does not cover. Those four relaxations are scoped to that route rather than
+ * granted everywhere.
  */
 function cspDirectives({ ocr }: { ocr: boolean }): string {
   // React's dev build (and Turbopack's HMR runtime) compile with eval(); the
@@ -38,7 +40,7 @@ function cspDirectives({ ocr }: { ocr: boolean }): string {
     `img-src 'self' data: https:${ocr ? " blob:" : ""}`,
     ...(ocr ? ["worker-src 'self' blob:"] : []),
     "font-src 'self' data:",
-    "connect-src 'self' https://*.googleapis.com https://*.google.com",
+    `connect-src 'self'${ocr ? " blob:" : ""} https://*.googleapis.com https://*.google.com`,
     "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com",
     "object-src 'none'",
     "base-uri 'self'",

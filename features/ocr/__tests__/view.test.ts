@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AppErrors } from "@/lib/errors/types";
 import type { DoneOutcome, ItemOutcome } from "../engine/orchestrator";
+import type { ImproveState } from "../fallback/improvePass";
 import { initialOcrJobState } from "../job/jobState";
 import type { OcrJobState } from "../job/jobState";
 import { combineText, describeItem, jobMarker, ocrDownloadName, previewSize, stageLine } from "../job/view";
@@ -27,6 +28,8 @@ describe("describeItem", () => {
       needsCheck: false,
       hasDigits: false,
       lang: "bn",
+      engine: "local",
+      aiProvider: null,
     });
   });
   it("flags fallback.needed as check", () => {
@@ -52,8 +55,51 @@ describe("describeItem", () => {
   });
 });
 
+const AI = (text: string): ImproveState => ({ status: "done", text, provider: "gemini", model: "m" });
+
+describe("describeItem with an improvement", () => {
+  const weak = done("a", "No. 4S", { confidence: 41.4, fallback: CHECK });
+
+  it("shows the improved text's view: ai tone, not needing a check, local confidence kept", () => {
+    expect(describeItem(weak, AI("নং ৪৫"))).toEqual({
+      tone: "ai",
+      confidenceText: "41%",
+      needsCheck: false,
+      hasDigits: true,
+      lang: "bn",
+      engine: "ai",
+      aiProvider: "gemini",
+    });
+  });
+  it("recomputes lang and digits from the improved text, not the Tesseract text", () => {
+    const view = describeItem(done("a", "নং ৪৫", { fallback: CHECK }), AI("Plain words"));
+    expect(view.lang).toBe("en");
+    expect(view.hasDigits).toBe(false);
+  });
+  it("ignores a running or failed improvement", () => {
+    for (const improvement of [{ status: "running" }, { status: "failed", message: "x" }] as const) {
+      expect(describeItem(weak, improvement)).toMatchObject({ tone: "check", needsCheck: true, engine: "local" });
+    }
+  });
+  it("ignores an improvement for an item that was not read", () => {
+    expect(describeItem({ status: "unreadable", id: "a" }, AI("x")).tone).toBe("unreadable");
+  });
+});
+
 describe("combineText", () => {
   const items = [meta("a", 1), meta("b", 1), meta("c", 1), meta("d", 1)];
+  it("uses improved text where present and local text elsewhere", () => {
+    const outcomes: Record<string, ItemOutcome> = { a: done("a", "এক"), b: done("b", "দুই"), c: done("c", "") };
+    const improvements: Record<string, ImproveState> = {
+      b: AI("দুই ঠিক"),
+      c: AI("তিন"),
+      d: { status: "failed", message: "x" },
+    };
+    expect(combineText(items, outcomes, improvements)).toBe("এক\n\nদুই ঠিক\n\nতিন");
+  });
+  it("ignores a running improvement", () => {
+    expect(combineText(items, { a: done("a", "এক") }, { a: { status: "running" } })).toBe("এক");
+  });
   it("keeps input order, skips empty/unreadable/failed, joins with blank line", () => {
     const outcomes: Record<string, ItemOutcome> = {
       d: done("d", "চার"),
@@ -104,6 +150,34 @@ describe("jobMarker", () => {
     const outcomes: Record<string, ItemOutcome> = { a: done("a", "x") };
     expect(jobMarker(state({ phase: "error", items: lines, outcomes }))).toBe("Stopped · 1 read");
   });
+  it("improving is fixed at the pass size and does not change per item", () => {
+    const base = { phase: "improving" as const, items: lines, improveTotal: 3 };
+    expect(jobMarker(state(base))).toBe("Improving 3 lines");
+    expect(jobMarker(state({ ...base, improvements: { a: AI("x") } }))).toBe("Improving 3 lines");
+    expect(jobMarker(state({ ...base, improveTotal: 1 }))).toBe("Improving 1 line");
+    expect(jobMarker(state({ phase: "improving", items: [meta("page-1", 1)], improveTotal: 2 }))).toBe(
+      "Improving 2 pages",
+    );
+  });
+  it("done adds the AI count only when there is one, and an improved line is no longer to check", () => {
+    const outcomes: Record<string, ItemOutcome> = {
+      a: done("a", "x"),
+      b: done("b", "y", { fallback: CHECK }),
+      c: done("c", "z", { fallback: CHECK }),
+    };
+    expect(jobMarker(state({ phase: "done", items: lines, outcomes }))).toBe("3 read · 2 to check");
+    const improvements = { b: AI("y2"), c: { status: "failed", message: "x" } } as const;
+    expect(jobMarker(state({ phase: "done", items: lines, outcomes, improvements }))).toBe(
+      "3 read · 1 to check · 1 by AI",
+    );
+  });
+  it("counts an empty local reading that AI filled as read", () => {
+    const outcomes: Record<string, ItemOutcome> = { a: done("a", "", { fallback: CHECK }) };
+    expect(jobMarker(state({ phase: "done", items: lines, outcomes }))).toBe("0 read · 1 to check");
+    expect(jobMarker(state({ phase: "done", items: lines, outcomes, improvements: { a: AI("পড়া") } }))).toBe(
+      "1 read · 0 to check · 1 by AI",
+    );
+  });
 });
 
 describe("stageLine", () => {
@@ -126,6 +200,20 @@ describe("stageLine", () => {
       "Reading page 1 of 2",
     );
     expect(stageLine(state({ phase: "reading", items: [meta("img-1", null)] }))).toBe("Reading image 1 of 1");
+  });
+  it("improving: n = settled + 1, capped at the total", () => {
+    const base = { phase: "improving" as const, items: lines, improveTotal: 3 };
+    const running = { status: "running" } as const;
+    const failed = { status: "failed", message: "x" } as const;
+    expect(stageLine(state({ ...base, improvements: { a: running, b: running, c: running } }))).toBe(
+      "Improving 1 of 3 with AI…",
+    );
+    expect(stageLine(state({ ...base, improvements: { a: AI("x"), b: failed, c: running } }))).toBe(
+      "Improving 3 of 3 with AI…",
+    );
+    expect(stageLine(state({ ...base, improvements: { a: AI("x"), b: AI("y"), c: AI("z") } }))).toBe(
+      "Improving 3 of 3 with AI…",
+    );
   });
 });
 

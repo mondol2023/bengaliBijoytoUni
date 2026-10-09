@@ -12,12 +12,14 @@ import { PrivacyNote } from "@/components/privacy/PrivacyNote";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useOcrJob } from "@/hooks/useOcrJob";
 import type { OcrJobState } from "@/features/ocr/job/jobState";
-import { combineText, jobMarker } from "@/features/ocr/job/view";
+import { combineText, jobMarker, tally } from "@/features/ocr/job/view";
 import type { OcrMode } from "@/features/ocr/types";
-import { OCR_NOTE } from "@/lib/privacy/disclosure";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { OCR_AI_NOTE, OCR_NOTE } from "@/lib/privacy/disclosure";
 import { motionTokens, springs, staggerChildren, staggerDelayChildren } from "@/lib/motion/tokens";
 import { OcrDropzone } from "./OcrDropzone";
 import { OcrEmptyState } from "./OcrEmptyState";
+import { OcrImproveToggle } from "./OcrImproveToggle";
 import { OcrModeToggle } from "./OcrModeToggle";
 import { OcrProgress } from "./OcrProgress";
 import { OcrResultRow } from "./OcrResultRow";
@@ -46,34 +48,50 @@ function formatBytes(bytes: number): string {
 }
 
 function readouts(state: OcrJobState): Readout[] {
-  let read = 0;
-  let toCheck = 0;
   let unreadable = state.unreadable;
   for (const outcome of Object.values(state.outcomes)) {
     if (outcome.status === "unreadable") unreadable++;
-    if (outcome.status !== "done") continue;
-    if (outcome.text.trim() !== "") read++;
-    if (outcome.fallback.needed) toCheck++;
   }
+  // An AI-read line is no longer "to check" in the Tesseract sense, and counts as read if it has text.
+  const { read, check: toCheck, ai } = tally(state);
   return [
     { label: "Lines", value: `${read}/${state.items.length}` },
     { label: "To check", value: String(toCheck), tone: toCheck > 0 ? "warning" : "ok" },
-    { label: "Engine", value: "Local" },
+    { label: "Engine", value: ai > 0 ? `Local + AI (${ai})` : "Local" },
     { label: "Unreadable", value: String(unreadable) },
   ];
 }
 
 export function OcrWorkspace() {
   const reducedMotion = usePrefersReducedMotion();
-  const { state, file, setFile, mode, setMode, fileKind, start, cancel, reset } = useOcrJob();
+  const {
+    state,
+    file,
+    setFile,
+    mode,
+    setMode,
+    fileKind,
+    start,
+    cancel,
+    reset,
+    improveAvailable,
+    improveEnabled,
+    setImproveEnabled,
+    improveOne,
+  } = useOcrJob();
+  const { user, isLoading: authLoading } = useAuth();
 
   // The hook keeps its engine between runs, so the download notice is only true until the first read starts.
   const [engineKept, setEngineKept] = useState(false);
   if (!engineKept && state.phase === "reading") setEngineKept(true);
 
   const busy = state.phase === "opening" || state.phase === "preparing" || state.phase === "reading";
+  const improving = state.phase === "improving";
+  const improvingNow = Object.values(state.improvements).some((improvement) => improvement.status === "running");
+  // Only when all three hold does a crop ever leave the browser, so only then may the note say so.
+  const aiActive = Boolean(user) && improveEnabled && improveAvailable === true;
   const hasRun = state.phase !== "idle";
-  const hasResults = combineText(state.items, state.outcomes) !== "";
+  const hasResults = combineText(state.items, state.outcomes, state.improvements) !== "";
 
   // The hook keeps old results when the file or mode changes, so a change starts from a clean sheet.
   function chooseFile(next: File | null) {
@@ -127,7 +145,17 @@ export function OcrWorkspace() {
         variants={itemVariants}
         className="mt-6 flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between"
       >
-        <OcrModeToggle mode={mode} onChange={chooseMode} fileKind={fileKind} disabled={busy} />
+        <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6">
+          <OcrModeToggle mode={mode} onChange={chooseMode} fileKind={fileKind} disabled={busy} />
+          <OcrImproveToggle
+            checked={improveEnabled}
+            onChange={setImproveEnabled}
+            signedIn={Boolean(user)}
+            authLoading={authLoading}
+            available={improveAvailable}
+            disabled={improvingNow}
+          />
+        </div>
         {file && (
           <span className="flex min-w-0 items-center gap-2 text-sm">
             <FileText className="h-4 w-4 shrink-0 text-foreground/60" aria-hidden />
@@ -147,7 +175,7 @@ export function OcrWorkspace() {
             <Button
               variant={hasResults ? "secondary" : "primary"}
               onClick={start}
-              disabled={!file || modeUnavailable}
+              disabled={!file || modeUnavailable || improving}
               loading={busy}
               leftIcon={<ScanText className="h-4 w-4" aria-hidden />}
             >
@@ -183,7 +211,7 @@ export function OcrWorkspace() {
               <span className="plate-marker">Text found</span>
               <OcrSummaryBar state={state} fileName={file?.name ?? "document"} onReadAgain={start} />
             </div>
-            {busy && <OcrProgress state={state} onCancel={cancel} className="hidden py-1 lg:block" />}
+            {(busy || improving) && <OcrProgress state={state} onCancel={cancel} className="hidden py-1 lg:block" />}
             <OcrEmptyState
               state={state}
               mode={mode}
@@ -200,6 +228,8 @@ export function OcrWorkspace() {
                     item={item}
                     outcome={outcome}
                     previewUrl={state.previews[item.id]}
+                    improvement={state.improvements[item.id]}
+                    onImprove={aiActive ? improveOne : undefined}
                     reducedMotion={reducedMotion}
                   />
                 ))}
@@ -211,7 +241,7 @@ export function OcrWorkspace() {
       )}
 
       <motion.div variants={itemVariants} className="mt-6 border border-border bg-surface-muted px-4 py-3">
-        <PrivacyNote note={OCR_NOTE} className="max-w-[80ch]" />
+        <PrivacyNote note={aiActive ? OCR_AI_NOTE : OCR_NOTE} className="max-w-[80ch]" />
       </motion.div>
     </motion.main>
   );

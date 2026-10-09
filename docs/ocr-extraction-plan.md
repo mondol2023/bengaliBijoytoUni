@@ -267,3 +267,96 @@ Open items:
 - Tesseract's core prints "Image too small to scale!!" / "Line cannot be recognized!!" to the console for strips under 3 px wide (CamScanner logo, tiny rows). Harmless, the rows come back empty; not filtered in the test because the test PDF does not trigger it.
 - Not verified: a real touch device, a screen-reader pass, reduced-motion behaviour (only the layout was checked with it emulated), scroll smoothness and blob-URL cleanup on the 211-row result, and the start/recognize timeouts on a slow phone (still provisional from §14).
 - Phase 5 (provider fallback for low-confidence rows) is not started; the Gemini model default from §11 still needs resolving first.
+
+## 16. Phase 5 status (2026-10-10) — built, **live signed-in proof not done**, uncommitted
+
+Signed-in users can have low-confidence lines re-read by Gemini, automatically after a job or per line. `npx tsc --noEmit`, `npm run lint`, `npx vitest run` (144 files / 2457 tests) and `npm run build` are green. The build lists `/api/ocr/improve` (dynamic).
+
+Built (plan `docs/superpowers/plans/2026-10-08-ocr-phase5-ai-fallback.md`, Tasks 1–9): `route → lib/ai/ocrImages.ts → registry → providers/gemini.ts` (one `geminiOcrProvider`), per-provider daily call budget (`lib/ocr/budget.ts`, collection `ocrCallBudget`), index-keyed JSON answer parser, `GET`/`POST /api/ocr/improve`; browser side `features/ocr/fallback/{batching,improveClient,improvePass}.ts`, the `improving` phase and `improvements` overlay in `jobState.ts`, improvement-aware `view.ts`, `OcrImproveToggle`, and the AI states of `OcrResultRow` / `OcrSummaryBar` / `OcrProgress` / `OcrScannerBed` / `OcrWorkspace`.
+
+Deviations (all settled):
+- **Route is `/api/ocr/improve`**, not `/api/ocr/gemini` (§2): it fronts a provider chain.
+- **`OCR_GEMINI_MODEL` is required and has no default**; unset means "not configured". `/api/ai/transcribe` still defaults to the 404 model (open item).
+- **`lib/firebase/sharedCounter.ts` allow-list** gained `"ocrCallBudget"`, and `lib/ocr/budget.ts` joined the expected list in `retentionInterplay.test.ts`. Without the first, every production budget check would have failed closed.
+- **Upload image is Phase 4's 1600 px JPEG preview**, read back with `fetch(blobUrl)`; no re-decode, no `source` kept alive.
+- **`OCR_AI_NOTE` replaces `OCR_NOTE`** (never both) when signed in, enabled and available; `OCR_NOTE` and its test are untouched. One sentence added to `/privacy`.
+- Additive edits only to `lib/ai/{enabled,types,registry}.ts`, `providers/gemini.ts`, `lib/privacy/disclosure.ts`; guard-test edits in `callSites.test.ts` (importer set, route-importer test, Guard B over `features/ocr`, `components/ocr`, `hooks/useOcrJob.ts`, all three required to exist).
+- **`/ocr` CSP gained `blob:` in `connect-src`** (found in Task 9, below). Scoped to `/ocr` only; every other route keeps the strict policy.
+
+**Bug found by the Task 9 browser test, fixed test-first:** under the `/ocr` CSP (`connect-src 'self' https://*.googleapis.com https://*.google.com`), `fetch(blobUrl)` is blocked in chromium, firefox **and** webkit (`'self'` does not cover `blob:`). `loadCrop` does exactly that, so every signed-in "Improve with AI" would have failed to read its crop. `tests/ocr.spec.ts` "the page's CSP lets it read a blob URL back" failed on all three, `csp.test.ts` now pins `blob:` in `/ocr`'s `connect-src` and its absence everywhere else, and `next.config.ts` adds it for `ocr: true` only. The unit tests could not catch this; only a real browser could.
+
+Task 9, what was run:
+- **Playwright, no key** (`tests/ocr.spec.ts`, passes on chromium, firefox, webkit against a production `next start`): anonymous sees the improve checkbox disabled with "Sign in to use this", sees `OCR_NOTE` and never `OCR_AI_NOTE`, makes **zero** requests to `/api/ocr/improve`, still completes a local read, and has no "Improve with AI" button or "by AI" marker. Plus the blob-URL test above.
+- **Headers** (`curl -I`, production build): `/`, `/documents` and `/api/ocr/improve` carry the strict CSP; `/ocr` carries the relaxed one including `blob:` in `connect-src`. Anonymous `GET` and `POST /api/ocr/improve` both return 401.
+- **Model choice, live, through the real `geminiOcrProvider`** (one 4-crop call per model, synthetic 1200×140 JPEGs of Bengali with Bengali digits, a case number with dates, and Latin text; 9.8–18.9 KB each): `gemini-3.5-flash-lite` **2.2 s**, all four lines exact; `gemini-3.5-flash` **52 s**, all four exact. 52 s is more than twice `providerTimeoutMs` (25 s), so it would time out every batch. **Chosen: `gemini-3.5-flash-lite`.** `providerTimeoutMs` (25 s) and the rate limit (24 per 10 min) stay: at ~2 s per call a 40-line pass is 10 calls. Both models are listed by `models.list` for the project key. Two calls total, no 404s.
+
+**Not done — needs a person with a Firebase login and a Gemini key set in `.env.local`** (`OCR_GEMINI_ENABLED=true`, `OCR_GEMINI_MODEL=gemini-3.5-flash-lite`; `.env.local` has the key but both OCR vars are empty): the signed-in browser pass on the court PDF and the licence-photo PDF (badge, Show local/AI reading, Copy all/Download contain AI text, the note switching to `OCR_AI_NOTE` and back); the **1600 px vs 2000 px digit check** on real court-page digit lines (the synthetic digits above were read correctly from images far smaller than 1600 px, which says nothing about a photographed page); `GET available` true/false; the budget test with `OCR_GEMINI_DAILY_CALL_BUDGET=2` and the Firestore increment; cancel during `improving`, a second file mid-pass, token lapse mid-pass; the largest request body and preview blob seen in DevTools against `maxRequestBytes` (3.8 MB) / `maxImageBytes` (1.5 MB). Until the size check runs, we do not know whether a 1600 px q 0.85 preview of a dense photo exceeds 1.5 MB (it would be reported as "too large to send", never sent).
+
+**Provider-terms finding** (Gemini API Additional Terms, <https://ai.google.dev/gemini-api/terms>, read 2026-10-10): on **Unpaid Services** (free tier), Google "uses the content you submit to the Services and any generated responses to provide, improve" its products, "human reviewers may read, annotate, and process your API input and output", and it warns "Do not submit sensitive, confidential, or personal information to the Unpaid Services"; no retention period is stated. On **Paid Services** Google says it does not use prompts or responses to improve its products, but logs them "for a limited period of time" (unspecified) for abuse detection and may store them in any country where it has facilities. The terms treat images like prompts. In the EEA, Switzerland and the UK the paid-service terms apply to every tier. Consequence: `OCR_AI_NOTE` says *we* do not store the crops and does not deny what Google keeps, which is accurate, but it does not tell the user that Google may keep or have people review them. **Use a paid-tier key before enabling `OCR_GEMINI_ENABLED` in production**, and consider adding "Google processes them under its own terms" to `OCR_AI_NOTE`, as `AI_TRANSCRIPTION_NOTE` does (a wording change to a user-facing privacy line, deliberately left for a decision).
+
+**TTL policy step (console, not in the repo):** create a Firestore TTL policy on collection `ocrCallBudget`, field `expireAt`, as for the other budget collection in `docs/data-retention.md`. Until then those documents are kept (one per provider per day).
+
+Open items: no second provider benchmarked (adding one is an adapter, a registry line and `SUPPORTED_PROVIDER_IDS`); `/api/ai/transcribe` still defaults to `gemini-2.5-flash`; Whole pages mode sends page-sized images, so its AI accuracy is unmeasured; the flash-lite conjunct slip from §11 did not show on the synthetic lines but real conjunct-heavy text is unchecked; `/ocr` is now the only page whose CSP lets script `fetch` a `blob:`.
+
+**Stopped here, waiting for approval before Phase 6.** (Phase 6 done, §17.)
+
+## 17. Phase 6 status (2026-10-10) — done, uncommitted
+
+`/ocr` is now reachable and indexable. `npx tsc --noEmit`, `npm run lint`, `npx vitest run` (144 files / 2457 tests, unchanged: header and footer have no tests) and `npm run build` are green; a production `next start` returns 200 for `/ocr`, the home page carries both new links and `/ocr` no longer emits a `robots` meta.
+
+Edits (all of them): `components/layout/SiteHeader.tsx` (a `/ocr` link labelled **OCR**, between Documents and Compare, so Compare stays last and Phase 7's "Open in Compare" reads left to right), `components/layout/SiteFooter.tsx` (**Text from images**, the page's own title, since the footer has room), `app/ocr/page.tsx` (dropped `robots: { index: false }`, which Phase 4 added only "until Phase 6 links the page").
+
+Deviations / decisions:
+- **Header made responsive below `sm`.** The header already overflowed at 360 px (§15 open item); a fourth link added ~58 px more. Below `sm` the wordmark text is `sr-only` (the অ mark stays, the link keeps its accessible name), the nav links use `px-2` and the gaps tighten. At 360 px the page's horizontal overflow went from ~131 px (pre-link) to **41 px** (with the link); 390 px: 11 px; 320 px: 81 px; 640 px and up: none. Measured signed out, light and dark, on `/`, `/ocr`, `/documents`. **Not fully fixed**: that needs a mobile menu, and the signed-in state (email link up to 10 rem) overflows regardless. This changes the header on every route below 640 px; revert the three class edits if you'd rather keep the wordmark.
+- **No home-page mention.** `CapabilityPlate` says "Six facts you can check against the running code" and "Files do get uploaded", both of which an OCR row would contradict or renumber, and the landing copy is governed by `PRODUCT.md`. Left for a copy decision; the nav and footer already surface the page.
+- No sitemap or `robots.txt` exists in `app/`, so nothing else needed updating.
+
+
+## 18. Phase 7 status (2026-10-10) — done, uncommitted
+
+"Open in Compare" hands the OCR reading to `/compare`'s Source field. `npx tsc --noEmit`, `npm run lint`, `npx vitest run` (145 files / 2474 tests) and `npm run build` are green. `tests/ocr.spec.ts` (now 5 cases) passes on chromium, firefox and webkit against a production `next start`.
+
+Built: `features/comparison/prefill.ts` (`stashComparePrefill`, `takeComparePrefill`, `browserPrefillStorage`; 17 tests in `features/comparison/__tests__/prefill.test.ts`), `hooks/useComparePrefill.ts`. Edited: `components/ocr/OcrSummaryBar.tsx` (new micro button, between Download and the filled Copy all), `components/comparison/ComparisonWorkspace.tsx` (reads the prefill once on mount into Source, text mode). No other existing page behaviour changed.
+
+Decisions / deviations:
+- **Payload is `{v:1, text, at}` JSON under `c2u:compare-prefill`, not bare text.** A stash older than 2 minutes (or dated in the future) is dropped, so a navigation that never finished cannot surprise a later visit to Compare. Anything malformed is cleared and ignored. Text is kept byte-for-byte.
+- **Uses the same text as Copy all / Download** (`combineText` with the AI overlay), so Compare sees what the user sees.
+- **Failure is visible, not silent:** if sessionStorage refuses the write (quota on a very long reading, blocked storage) the page stays on `/ocr` and shows "Couldn't hand this to Compare… Copy it and paste it there." (pinned by an e2e that makes `setItem` throw).
+- **Compare shows a one-line status** under the settings row: "Source holds your OCR reading. Add the reference text as Target to see where they differ." It uses the existing token-driven collapse and the reduced-motion branch. Not in the original plan; without it text appears in Source with no explanation.
+- Checked at 360 px: Compare with a prefill has no horizontal overflow.
+- The limit of the hand-off is sessionStorage (~5 MB of UTF-16 in most browsers); a larger reading hits the failure message above. The Compare tier limit (3 000 chars on *Easy*) still applies after the text arrives, so a long reading shows Compare's existing "over the character limit" message.
+
+Not verified: a real touch device and a screen-reader pass of the new status line; a reading near the sessionStorage ceiling (the failure path was tested by forcing the throw).
+
+**Stopped here, waiting for approval before Phase 8** (QA pass + docs).
+
+## 19. Phase 8 status (2026-10-10) — QA pass done, docs written, uncommitted
+
+`npx tsc --noEmit` (exit 0), `npm run lint` (exit 0), `npx vitest run` (145 files / **2474** tests) and `npm run build` (exit 0; `/ocr` static, `/api/ocr/improve` dynamic) are green, run fresh after the last product edit. `tests/ocr.spec.ts` passes **15/15** (5 cases × chromium, firefox, webkit) against a production `next start`, both before and after the two fixes below.
+
+### What was checked, and what it showed
+- **Headers / CSP** (`curl -I`, production): `/`, `/converter`, `/documents`, `/compare`, `/privacy`, `/ocrfoo` and `/api/ocr/improve` carry the strict policy; `/ocr`, `/ocr/worker.min.js` and `/ocr/lang/ben.traineddata.gz` carry the relaxed one (`'wasm-unsafe-eval'`, `worker-src 'self' blob:`, `blob:` in `img-src` and `connect-src`), one CSP header each. Only the `/ocr/*` assets carry the 1-day + 7-day SWR `Cache-Control`. Anonymous `/api/ocr/improve` is 401.
+- **Layout, empty and with a result on screen**, chromium, light and dark: nothing inside `<main>` is wider than the viewport at 360, 390 or 320 px. Page-level overflow is the known header one (§15/§17): 41 / 11 / 81 px, identical empty and with results. Not from `/ocr`.
+- **Reduced motion** (emulated): 0 infinite animations while reading and 0 running animations once done; without the preference, 1 infinite animation (the reading wash) during the read. So the scan line / pulse really are gated, not just hidden.
+- **Keyboard:** every stop has a visible ring (2 px outline, or the primary button's box-shadow). Order is skip link, wordmark, nav, sign in, mode group (one radio stop), file input, Read text, Start over, then the summary-bar actions. No focus trap.
+- **axe-core** (wcag2a/2aa/21aa + best-practice), `/ocr` empty and with results: dark mode **0 violations**. Light mode **one**: `color-contrast` 4.49:1 (needs 4.5:1) for `#707072` on `#f4f4f5`, 12 px, on the `PrivacyNote` foot band. It is a shared token, not OCR code: `/documents` fails identically, and `/`, `/converter`, `/privacy` have their own, larger, pre-existing contrast misses. **Not changed** (shared styling is outside §4's list); recorded for a separate pass.
+- **Real corpus, 360 px, Embedded images:** the three Civil Revision 465/2009 variants start reading and show "Reading line 36 of 211" with the page and its row boxes in the mini-map. Whole read-through timings are Phase 4's (§15); not re-measured.
+
+### Two defects found, both fixed (edits to feature-owned files)
+- **Mini-map distortion at 360 px.** `OcrScannerBed`'s `MiniMap` forced every page into a 54×72 portrait box with `object-fill`, so a landscape page was visibly stretched. The slot keeps its 54×72 footprint (no layout jump); the page inside it now takes its own aspect ratio, and the row boxes (percentages of the page) follow it. Measured: a 612×204 pt page renders at ratio 3.00 (was squashed to 0.75); the court PDF's portrait page still shows its row boxes.
+- **Row label wrapped at 360 px.** In `OcrResultRow`, "PAGE 1" broke onto two lines when the right-hand meta string ("95% · BEN+ENG · TESSERACT · VERIFY NUMBERS") took the width. The label is now `shrink-0 whitespace-nowrap`; the meta wraps instead. Measured: label height 16 px against a 15.68 px line.
+- Neither has a unit test: the repo has no DOM test setup (Phase 4 decision), so they are proved by the measurements above in a throw-away Playwright probe (deleted; not part of the suite).
+
+### Docs
+`CLAUDE.md` gained an "OCR page" section (generated runtime assets, `best_int`, the split CSP and the `blob:` finding, Guard B, `ben`-first rule, fail-closed AI chain and why there is no default model, `OCR_NOTE` vs `OCR_AI_NOTE`, row stitching, the pdf.js shared-proxy and tesseract.js `terminate()` traps, the Compare hand-off, how to run the e2e). `README.md` gained the `/ocr` feature, tech-stack rows, structure lines, the `OCR_GEMINI_*` variables, `ocr:sync`, and three Known limitations.
+
+### Not verified (honest list)
+- **Signed-in AI path, live.** Still owed exactly as listed in §16: needs a Firebase login and `OCR_GEMINI_ENABLED=true` + `OCR_GEMINI_MODEL=gemini-3.5-flash-lite` in `.env.local`. Until it runs, the unit/e2e coverage stands in for it, and the 1600 px vs 2000 px digit check, the budget/Firestore increment, token-lapse and request-size observations are all still open. **Phase 8's own gate (§10: "signed-in with Gemini fallback") therefore cannot be called met.**
+- Bundle size: this build's route table has no First Load JS column (Turbopack), so the "other routes did not grow" check was not repeated; the only evidence is Phase 4's 143-723 B figure. Phase 5-7 edits to shared code were small (`CopyButton`/`Progress` props, `ComparisonWorkspace` prefill, header/footer links) but not measured.
+- A DOCX run and the 15 MB-PDF memory / slow-network cases were not repeated this phase. No real touch device, no screen-reader pass (axe and the keyboard trace stand in, they do not replace one), no scroll-smoothness / blob-URL-leak check on the 211-row result, no timeout tuning on a slow phone (§14 still provisional).
+- Firefox and WebKit were only exercised through the e2e file, not the layout/axe/reduced-motion probes (chromium only).
+
+### Open items carried forward
+Header overflow below ~640 px (needs a mobile menu) and the shared 4.49:1 contrast token; `/api/ai/transcribe` still defaults to the 404 model; no second AI provider benchmarked; the Firestore TTL policy on `ocrCallBudget` is still a console step; the `OCR_AI_NOTE` wording about Google's own retention is still a copy decision (§16); `ocr:sync` output is gitignored and rebuilt by `predev`/`prebuild` (say so if you would rather commit it).
+
+**Stopped here.** Nothing is committed. The phase plan is otherwise complete; the remaining gate is the signed-in live pass above.

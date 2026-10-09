@@ -283,13 +283,25 @@ function Filmstrip({ state, view }: { state: OcrJobState; view: BedView }) {
 function MiniMap({ state, view }: { state: OcrJobState; view: BedView }) {
   const page = view.currentPage !== null ? view.pageOf.get(view.currentPage) : undefined;
   const preview = view.currentPage !== null ? state.pagePreviews[view.currentPage] : undefined;
+  // The slot keeps its 54x72 footprint so the row doesn't jump; the page inside it keeps its own
+  // proportions (a landscape page is not stretched to portrait), and PageBoxes' percentages follow it.
+  const landscape = page ? page.widthPt / page.heightPt >= 54 / 72 : false;
   return (
-    <span aria-hidden="true" className="relative block h-[72px] w-[54px] shrink-0 overflow-hidden border border-border bg-white">
-      {preview && state.items[0]?.box === null && (
-        // eslint-disable-next-line @next/next/no-img-element -- a local blob URL
-        <img src={preview} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-fill" />
-      )}
-      {page && <PageBoxes state={state} view={view} page={page} fill />}
+    <span aria-hidden="true" className="flex h-[72px] w-[54px] shrink-0 items-center justify-center">
+      <span
+        className="relative block overflow-hidden border border-border bg-white"
+        style={
+          page
+            ? { aspectRatio: `${page.widthPt} / ${page.heightPt}`, ...(landscape ? { width: "100%" } : { height: "100%" }) }
+            : { width: "100%", height: "100%" }
+        }
+      >
+        {preview && state.items[0]?.box === null && (
+          // eslint-disable-next-line @next/next/no-img-element -- a local blob URL
+          <img src={preview} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-fill" />
+        )}
+        {page && <PageBoxes state={state} view={view} page={page} fill />}
+      </span>
     </span>
   );
 }
@@ -314,7 +326,9 @@ export function OcrScannerBed({
 }) {
   const view = useBedView(state);
   const label = pageLabel(state, view);
-  const busy = state.phase === "opening" || state.phase === "preparing" || state.phase === "reading";
+  // While improving, the bed is not reading anything: no sweep, and the progress line carries Cancel.
+  const busy =
+    state.phase === "opening" || state.phase === "preparing" || state.phase === "reading" || state.phase === "improving";
 
   if (compact) {
     return (
