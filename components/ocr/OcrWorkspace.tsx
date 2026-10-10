@@ -229,7 +229,7 @@ export function OcrWorkspace() {
                     outcome={outcome}
                     previewUrl={state.previews[item.id]}
                     improvement={state.improvements[item.id]}
-                    onImprove={aiActive ? improveOne : undefined}
+                    onImprove={aiActive && !busy && !improving ? improveOne : undefined}
                     reducedMotion={reducedMotion}
                   />
                 ))}

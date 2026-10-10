@@ -360,3 +360,25 @@ Not verified: a real touch device and a screen-reader pass of the new status lin
 Header overflow below ~640 px (needs a mobile menu) and the shared 4.49:1 contrast token; `/api/ai/transcribe` still defaults to the 404 model; no second AI provider benchmarked; the Firestore TTL policy on `ocrCallBudget` is still a console step; the `OCR_AI_NOTE` wording about Google's own retention is still a copy decision (§16); `ocr:sync` output is gitignored and rebuilt by `predev`/`prebuild` (say so if you would rather commit it).
 
 **Stopped here.** Nothing is committed. The phase plan is otherwise complete; the remaining gate is the signed-in live pass above.
+
+## 20. Live Gemini check and fixes (2026-10-10) — uncommitted
+
+A throw-away harness (deleted) ran the real chain server-side: pdf.js extraction → real Tesseract `best_int` → `pickImproveTargets` → `planBatches` → `readOcrImages` → live `gemini-3.5-flash-lite`, with an in-memory budget store in place of Firestore. **Still not exercised:** browser sign-in, the Firestore `ocrCallBudget` increment, and token lapse mid-pass.
+
+### Measured
+- 2.4–5 s per call. Conjuncts are fixed (`অধিক্কেত্র` → `অধিক্ষেত্র`). The licence and CamScanner photos read far better than with Tesseract.
+- Crop sizes: line strips ≤ 36 KB; whole-page photos 215 KB and 367 KB. That is well under the 1.5 MB per-image and 3.8 MB per-request limits, so no re-encode ladder is needed.
+- One transient `provider_unavailable` after 19 s; a replay of the same images succeeded. No-retry stays as designed, and the per-line "Improve with AI" button is the manual retry.
+
+### Bugs found and fixed
+1. **Empty answers sank whole batches.** Gemini returns `""` for a blank strip, a logo or a ruled line. `parseOcrResponse` treated that as malformed and failed the call. The other three lines in the batch lost their AI reading, a budget unit was spent anyway, and two such batches tripped the stop-after-2 rule.
+   - Fix: `""` is now a valid answer. `runImprovePass` marks that line `failed` with "The AI found no text in this image." so it keeps its local reading.
+   - The prompt now asks for an empty text explicitly, and `OCR_PROMPT_VERSION` is now `ocr-v2`.
+2. **Manual "Improve with AI" clicks were dropped silently** whenever another request was in flight. The button was also shown during a read or the auto pass.
+   - Fix: clicks during a manual request are queued; the row shows its spinner straight away, and the queue is sent as the next request.
+   - `improveFinished` now takes `ids`, so ending one request no longer clears lines that were queued meanwhile.
+   - The button is hidden while busy or during the auto pass.
+3. **Transparent DOCX images became black JPEGs.** `toPreviewUrl` encoded RGBA straight to JPEG, so both the preview and the image sent to the AI were black-on-black. It now composites onto white first. There is no unit test for this (no DOM test setup).
+
+### Validation
+`tsc`, `lint`, `vitest` (2476 passed) and `build` are all clean. `tests/ocr.spec.ts`: 14 of 15 passed on the first run. The webkit anonymous test timed out on the local read under 3-browser load; it passed when re-run alone (12.6 s).

@@ -25,6 +25,7 @@ export type ImproveStop = "done" | "aborted" | "auth" | "rate-limit" | "unavaila
 const TOO_LARGE = "This line is too large to send.";
 const OVER_JOB_CAP = "Too many lines for one pass. This one kept its local reading.";
 const SIGN_IN_AGAIN = "Sign in again to continue.";
+const NO_TEXT = "The AI found no text in this image.";
 const FAILED_BATCHES_IN_A_ROW = 2;
 
 /** Lines Tesseract flagged, weakest first. An empty reading counts as confidence 0. */
@@ -92,9 +93,11 @@ export async function runImprovePass(
     if (result.ok) {
       failedInARow = 0;
       const { texts, provider, model } = result.value;
-      batch.forEach((id, position) =>
-        onUpdate(id, { status: "done", text: texts[position] as string, provider, model }),
-      );
+      batch.forEach((id, position) => {
+        const text = texts[position] as string;
+        // "" means the AI saw no text (a logo, a rule, a blank strip); keep the local reading.
+        onUpdate(id, text ? { status: "done", text, provider, model } : { status: "failed", message: NO_TEXT });
+      });
       continue;
     }
 

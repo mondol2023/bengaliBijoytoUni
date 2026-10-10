@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversionResolutionRequest } from "../types";
 import { CONVERSION_RESOLUTION_PROMPT_VERSION } from "../promptBuilder";
+import { OCR_PROMPT_VERSION } from "../ocrPrompt";
 
 const baseRequest: ConversionResolutionRequest = {
   encodingId: "legacy-bangla-font-x",
@@ -199,7 +200,7 @@ describe("geminiOcrProvider", () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { texts: ["ক", "খ"], provider: "gemini", model: "test-ocr-model", promptVersion: "ocr-v1" },
+      value: { texts: ["ক", "খ"], provider: "gemini", model: "test-ocr-model", promptVersion: OCR_PROMPT_VERSION },
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];

@@ -79,14 +79,19 @@ describe("parseOcrResponse", () => {
       ]),
     ));
 
-  it.each(["", "   \n"])("rejects an empty text %j", (text) =>
-    expectInvalid(
+  // Measured live: Gemini answers "" for a blank crop, a logo or a ruled line. That is a reading
+  // ("no text here"), not a malformed answer, and must not cost the other crops in the call theirs.
+  it.each(["", "   \n"])("accepts an empty text %j as 'no text in this image'", (text) => {
+    const result = parseOcrResponse(
+      "gemini",
       json([
         { index: 1, text: "ক" },
         { index: 2, text },
       ]),
-    ),
-  );
+      2,
+    );
+    expect(result).toEqual({ ok: true, value: ["ক", ""] });
+  });
 
   it("rejects fenced JSON and prose around the JSON", () => {
     const body = json([

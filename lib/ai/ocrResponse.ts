@@ -10,9 +10,13 @@ const responseSchema = z.object({
 /**
  * Validates a provider's raw answer to an OCR request and returns one text per
  * image, in image order. All-or-nothing: a count mismatch, a repeated or
- * out-of-range `index`, an empty or over-long text, or anything that is not
- * exactly the JSON object asked for fails the whole call — pairing a text
- * with the wrong crop would put one line's words under another line's image.
+ * out-of-range `index`, an over-long text, or anything that is not exactly
+ * the JSON object asked for fails the whole call — pairing a text with the
+ * wrong crop would put one line's words under another line's image.
+ *
+ * An empty text is a valid answer ("no text in this image": a blank crop, a
+ * logo, a ruled line) and comes back as "". Rejecting it would throw away the
+ * other crops' readings in the same call; the caller decides what "" means.
  *
  * The failure's `debug` carries only the reason, never the model's text,
  * which `logAppError` would otherwise print.
@@ -41,7 +45,6 @@ export function parseOcrResponse(
     if (index < 1 || index > expectedCount) return invalid("index out of range");
     if (texts[index - 1] !== undefined) return invalid("duplicate index");
     const trimmed = text.trim();
-    if (trimmed.length === 0) return invalid("empty text");
     if (trimmed.length > OCR_AI_LIMITS.maxTextChars) return invalid("text too long");
     texts[index - 1] = trimmed;
   }

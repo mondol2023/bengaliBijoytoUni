@@ -38,16 +38,17 @@ async function toPreviewUrl(image: RawImage, maxEdge: number): Promise<string> {
   const width = Math.max(1, Math.round(image.width * scale));
   const height = Math.max(1, Math.round(image.height * scale));
 
-  let target = source;
-  if (scale < 1) {
-    target = document.createElement("canvas");
-    target.width = width;
-    target.height = height;
-    const context = target.getContext("2d");
-    if (!context) throw new Error("no 2D canvas context");
-    context.imageSmoothingQuality = "high";
-    context.drawImage(source, 0, 0, width, height);
-  }
+  // Always composite onto white: JPEG has no alpha, so a transparent DOCX PNG would otherwise
+  // encode as black, and black text on black is what the preview and the AI would then get.
+  const target = document.createElement("canvas");
+  target.width = width;
+  target.height = height;
+  const context = target.getContext("2d");
+  if (!context) throw new Error("no 2D canvas context");
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, width, height);
+  context.imageSmoothingQuality = "high";
+  context.drawImage(source, 0, 0, width, height);
 
   const blob = await new Promise<Blob | null>((resolve) => target.toBlob(resolve, "image/jpeg", PREVIEW_JPEG_QUALITY));
   if (!blob) throw new Error("preview encoding failed");

@@ -27,7 +27,7 @@ function fakeProvider(
     async readImages(): Promise<ProviderResult<{ texts: readonly string[]; provider: ProviderId; model: string; promptVersion: string }>> {
       provider.calls += 1;
       if (Array.isArray(behaviour)) {
-        return providerOk({ texts: behaviour, provider: id, model: `${id}-model`, promptVersion: "ocr-v1" });
+        return providerOk({ texts: behaviour, provider: id, model: `${id}-model`, promptVersion: "ocr-v2" });
       }
       if (behaviour === "unconfigured") return providerErr(ProviderErrors.notConfigured(id));
       return providerErr(behaviour);

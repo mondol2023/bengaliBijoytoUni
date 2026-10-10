@@ -90,6 +90,9 @@ export function useOcrJob(): {
   // own record of every URL it made, and of which job is current.
   const jobIdRef = useRef(0);
   const controllerRef = useRef<AbortController | null>(null);
+  // Lines clicked "Improve with AI" while a manual request is in flight; sent together next.
+  const manualQueueRef = useRef<string[]>([]);
+  const manualRunningRef = useRef(false);
   const urlsRef = useRef<Set<string>>(new Set());
   const engineRef = useRef<OcrEngine | null>(null);
   const fileRef = useRef<File | null>(null);
@@ -124,6 +127,7 @@ export function useOcrJob(): {
     jobIdRef.current++;
     controllerRef.current?.abort();
     controllerRef.current = null;
+    manualQueueRef.current = [];
     revokeAll();
   }, [revokeAll]);
 
@@ -174,7 +178,7 @@ export function useOcrJob(): {
     }
   }, []);
 
-  /** Runs the improve pass for `ids` under `jobId`, then clears whatever is still marked running. */
+  /** Runs the improve pass for `ids` under `jobId`, then clears whichever of them is still marked running. */
   const improve = useCallback(
     async (jobId: number, ids: string[], pass: boolean, signal: AbortSignal) => {
       const send = (action: ActionBody) => {
@@ -189,7 +193,7 @@ export function useOcrJob(): {
           signal,
         });
       } finally {
-        send({ type: "improveFinished" });
+        send({ type: "improveFinished", ids });
       }
     },
     [loadCrop],
@@ -381,17 +385,37 @@ export function useOcrJob(): {
 
   const improveOne = useCallback(
     (id: string) => {
-      // One request at a time: a running job, a pass or another line already owns the controller.
-      if (controllerRef.current) return;
+      // A running job or auto pass owns the controller; the workspace hides the button then.
+      if (controllerRef.current && !manualRunningRef.current) return;
       if (!improveEnabledRef.current || improveAvailableRef.current !== true) return;
       const current = stateRef.current;
-      if (current.outcomes[id]?.status !== "done" || current.improvements[id]?.status === "done") return;
+      const improvement = current.improvements[id]?.status;
+      if (current.outcomes[id]?.status !== "done" || improvement === "done" || improvement === "running") return;
+
+      const jobId = jobIdRef.current;
+      // Queue rather than drop a click that lands while another line is in flight. Marking it
+      // running now gives the row its spinner straight away.
+      manualQueueRef.current.push(id);
+      dispatch({ type: "improveStarted", jobId, ids: [id], pass: false });
+      if (manualRunningRef.current) return;
 
       const controller = new AbortController();
       controllerRef.current = controller;
-      void improve(jobIdRef.current, [id], false, controller.signal).finally(() => {
-        if (controllerRef.current === controller) controllerRef.current = null;
-      });
+      manualRunningRef.current = true;
+      void (async () => {
+        try {
+          while (manualQueueRef.current.length > 0 && !controller.signal.aborted && jobIdRef.current === jobId) {
+            const ids = manualQueueRef.current.splice(0);
+            await improve(jobId, ids, false, controller.signal);
+          }
+        } finally {
+          // Cancelled with lines still queued: they never went out, so stop showing them as running.
+          const unsent = manualQueueRef.current.splice(0);
+          if (unsent.length > 0 && jobIdRef.current === jobId) dispatch({ type: "improveFinished", jobId, ids: unsent });
+          manualRunningRef.current = false;
+          if (controllerRef.current === controller) controllerRef.current = null;
+        }
+      })();
     },
     [improve],
   );

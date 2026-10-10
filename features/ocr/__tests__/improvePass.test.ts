@@ -122,6 +122,16 @@ describe("runImprovePass", () => {
     expect(settled(updates)).toEqual({ a: "done", big: "failed", c: "done" });
   });
 
+  it("keeps the local reading of a line the AI found no text in, and still improves the rest", async () => {
+    const { run, updates } = setup({
+      ids: ["a", "logo", "c"],
+      results: [async () => reading(["t-a", "", "t-c"])],
+    });
+    expect(await run()).toEqual({ stoppedBy: "done" });
+    expect(updates).toContainEqual(["logo", { status: "failed", message: "The AI found no text in this image." }]);
+    expect(settled(updates)).toEqual({ a: "done", logo: "failed", c: "done" });
+  });
+
   it("makes no request at all when nothing is sendable", async () => {
     const { run, improve, updates } = setup({ ids: ["a"], missing: ["a"], results: [] });
     expect(await run()).toEqual({ stoppedBy: "done" });

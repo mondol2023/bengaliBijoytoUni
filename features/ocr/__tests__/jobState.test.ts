@@ -211,6 +211,13 @@ describe("ocrJobReducer", () => {
       expect(state.improvements).toEqual({ a: AI });
     });
 
+    it("improveFinished with ids clears only those, so a line queued meanwhile stays running", () => {
+      let state = ocrJobReducer(finishedJob(), { type: "improveStarted", jobId: 1, ids: ["a"], pass: false });
+      state = ocrJobReducer(state, { type: "improveStarted", jobId: 1, ids: ["b"], pass: false });
+      state = ocrJobReducer(state, { type: "improveFinished", jobId: 1, ids: ["a"] });
+      expect(state.improvements).toEqual({ b: { status: "running" } });
+    });
+
     it("improveFinished leaves cancelled alone", () => {
       let state = ocrJobReducer(cancelledJob(), { type: "improveStarted", jobId: 1, ids: ["a"], pass: false });
       state = ocrJobReducer(state, { type: "improveFinished", jobId: 1 });

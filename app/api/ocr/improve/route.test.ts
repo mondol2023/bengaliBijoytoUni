@@ -53,7 +53,7 @@ beforeEach(() => {
   vi.mocked(checkSharedRateLimit).mockResolvedValue({ ok: true } as never);
   vi.mocked(readOcrImages).mockResolvedValue({
     ok: true,
-    value: { texts: ["ক"], provider: "gemini", model: "m", promptVersion: "ocr-v1" },
+    value: { texts: ["ক"], provider: "gemini", model: "m", promptVersion: "ocr-v2" },
   });
   signedIn();
 });

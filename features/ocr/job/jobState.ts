@@ -51,7 +51,8 @@ export type OcrJobAction =
   /** `pass` is the automatic run after a job; a single-line improve leaves the phase alone. */
   | { type: "improveStarted"; jobId: number; ids: string[]; pass: boolean }
   | { type: "improveUpdate"; jobId: number; id: string; state: ImproveState }
-  | { type: "improveFinished"; jobId: number }
+  /** `ids`: settle only these (a request that ended); omitted, settle every running line. */
+  | { type: "improveFinished"; jobId: number; ids?: string[] }
   | { type: "reset" };
 
 export const initialOcrJobState: OcrJobState = {
@@ -126,10 +127,13 @@ export function ocrJobReducer(state: OcrJobState, action: OcrJobAction): OcrJobS
       return { ...state, improvements: { ...state.improvements, [action.id]: action.state } };
     case "improveFinished": {
       const entries = Object.entries(state.improvements);
-      const settled = entries.filter(([, improvement]) => improvement.status !== "running");
+      const ended = action.ids ? new Set(action.ids) : null;
+      const kept = entries.filter(
+        ([id, improvement]) => improvement.status !== "running" || (ended !== null && !ended.has(id)),
+      );
       const phase = state.phase === "improving" ? "done" : state.phase;
-      if (settled.length === entries.length && phase === state.phase) return state;
-      return { ...state, phase, improvements: Object.fromEntries(settled) };
+      if (kept.length === entries.length && phase === state.phase) return state;
+      return { ...state, phase, improvements: Object.fromEntries(kept) };
     }
   }
 }
