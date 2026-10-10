@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
     });
     return fail(extraction.error);
   }
-  const { text, fileType, pageCount, notes, runs, imageTextPages } = extraction.value;
+  const { text, fileType, pageCount, notes, runs, imageTextPages, noTextMapPages } = extraction.value;
 
   const usageResult = validateUsage(text, tier, overrideMaxChars);
   if (!usageResult.ok) {
@@ -221,6 +221,7 @@ export async function POST(request: NextRequest) {
     confidence: conversion.value.validation.alreadyUnicode ? 1 : mappingConfidence,
     pageCount,
     imageTextPages,
+    noTextMapPages,
   });
 
   // A converted-but-imperfect document is the failure mode worth collecting

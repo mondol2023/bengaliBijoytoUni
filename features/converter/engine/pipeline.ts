@@ -12,6 +12,12 @@ import {
   type ValidationResult,
 } from "./validate";
 import { detectEncoding } from "./detectEncoding";
+import {
+  findForeignEncoding,
+  foreignEncodingMessage,
+  looksLikeGlyphOrderText,
+  NO_TEXT_MAP_MESSAGE,
+} from "./diagnose";
 import { buildOutputSegments, type OutputSegment } from "./segments";
 import { CONVERSION_ENGINE_VERSION, computeRulesHash } from "./version";
 
@@ -94,9 +100,25 @@ export function convertLegacyText(
   // this call site.
   const tokenValidation = validateTokens(tokens);
   const outputValidation = validateUnicodeOutput(unicodeText, { incompleteCluster });
+  // Failures no mapping rule can fix get a plain explanation ahead of the
+  // byte list: glyph codes from a PDF font with no text map, or bytes that
+  // belong to another registered encoding.
+  const diagnostics: string[] = [];
+  let suggestedEncodingId: string | undefined;
+  if (looksLikeGlyphOrderText(sourceText)) {
+    diagnostics.push(NO_TEXT_MAP_MESSAGE);
+  } else {
+    const foreign = findForeignEncoding(tokenValidation.unmappedDetails, encoding.id);
+    if (foreign) {
+      diagnostics.push(foreignEncodingMessage(foreign, encoding.id));
+      suggestedEncodingId = foreign.encodingId;
+    }
+  }
+
   const validation: ValidationResult = {
     valid: tokenValidation.valid && outputValidation.valid,
     warnings: [
+      ...diagnostics,
       ...tokenValidation.warnings,
       ...outputValidation.warnings,
       ...sourceSignals.map((signal) => signal.message),
@@ -107,6 +129,7 @@ export function convertLegacyText(
     // Advisory only: an ambiguous byte still converted, so it does not make
     // the result invalid. It is surfaced and recorded for review.
     sourceSignals,
+    suggestedEncodingId,
   };
 
   // E4. Text that is already Unicode Bengali matches no rule in a CP1252

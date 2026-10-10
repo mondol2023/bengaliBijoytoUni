@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { AlertTriangle, Info } from "lucide-react";
 import { motionTokens } from "@/lib/motion/tokens";
 import type { ValidationResult } from "@/features/converter/engine/pipeline";
+import { getEncoding } from "@/features/converter/encodings/registry";
 
 /**
  * Details spelled out in the panel. The rest stay in the summary line's byte
@@ -11,7 +12,16 @@ import type { ValidationResult } from "@/features/converter/engine/pipeline";
  */
 const MAX_DETAILED = 8;
 
-export function ConversionWarnings({ validation }: { validation: ValidationResult | null }) {
+export function ConversionWarnings({
+  validation,
+  onUseEncoding,
+}: {
+  validation: ValidationResult | null;
+  /** When given, a wrong-encoding warning gets a button that re-converts with the suggested one. */
+  onUseEncoding?: (encodingId: string) => void;
+}) {
+  const suggested = validation?.suggestedEncodingId;
+  const suggestedName = suggested ? getEncoding(suggested)?.name : undefined;
   /**
    * Already-Unicode input is a no-op, not a failure, so it reports
    * `valid: true` (which is what keeps it out of the logs) and still needs
@@ -50,6 +60,18 @@ export function ConversionWarnings({ validation }: { validation: ValidationResul
               {validation.warnings.map((warning) => (
                 <p key={warning}>{warning}</p>
               ))}
+
+              {onUseEncoding && suggested && suggestedName && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => onUseEncoding(suggested)}
+                    className="rounded-md border border-warning/40 px-3 py-1 text-sm font-medium hover:bg-warning/10"
+                  >
+                    Convert as {suggestedName}
+                  </button>
+                </div>
+              )}
 
               {details.length > 0 && (
                 <div className="flex flex-col gap-2">

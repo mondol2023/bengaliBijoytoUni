@@ -87,6 +87,8 @@ export function useDocumentConversion(initialTier: TierId = "easy") {
   // one (the user picked another file meanwhile) is dropped, not shown
   // against the wrong document.
   const requestSeq = useRef(0);
+  // The account-tier write a tier pick started, until it settles.
+  const pendingTierSave = useRef<Promise<SafeErrorResponse | null> | null>(null);
 
   function setAutoAi(next: boolean) {
     try {
@@ -110,6 +112,8 @@ export function useDocumentConversion(initialTier: TierId = "easy") {
 
     const body = new FormData();
     body.set("file", target);
+    await pendingTierSave.current;
+    if (seq !== requestSeq.current) return;
     try {
       const idToken = user ? await getIdToken() : null;
       const response = await fetch("/api/ai/transcribe", {
@@ -163,8 +167,17 @@ export function useDocumentConversion(initialTier: TierId = "easy") {
    */
   async function selectTier(next: TierId) {
     setTier(next);
+    // A limit error was measured against the old tier; under the new one it
+    // is no longer true, and leaving it up reads as "still capped at Easy".
+    if (error?.code === "LIMIT_EXCEEDED_ERROR") {
+      setError(null);
+      setStatus(result ? "done" : "idle");
+    }
     if (!user) return;
-    const failure = await setAccountTier(next);
+    const save = setAccountTier(next);
+    pendingTierSave.current = save;
+    const failure = await save;
+    if (pendingTierSave.current === save) pendingTierSave.current = null;
     if (failure) {
       setError(failure);
       setStatus("error");
@@ -178,6 +191,11 @@ export function useDocumentConversion(initialTier: TierId = "easy") {
     setError(null);
     setResult(null);
     clearAi();
+    // The server reads the tier from the account, not the request, so a
+    // Convert clicked while a tier change is still saving would be measured
+    // against the old tier.
+    await pendingTierSave.current;
+    if (seq !== requestSeq.current) return;
 
     const body = new FormData();
     body.set("file", file);

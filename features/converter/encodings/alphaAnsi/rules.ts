@@ -37,6 +37,33 @@ export function alphaAnsiPostProcess(tokens: Token[]): Token[] {
   const output: Token[] = [];
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
+    // ৈ is two bytes: "~" then the ে byte (l¡S~®e¢aL রাজনৈতিক). It is merged
+    // here rather than tabled because a 2→1 rule would lower the table's
+    // minimum length ratio — see the note in `map.ts`.
+    // The pair also arrives the other way round, ে byte first (S®~eL¡ জনৈকা,
+    // ®~f¢œL পৈত্রিক), depending on how the extractor ordered the two glyphs.
+    const next = tokens[i + 1];
+    const isEByte = (t: Token | undefined) => t?.unicode === "ে" && t.reorder === "before-consonant";
+    const isTilde = (t: Token | undefined) => t?.legacy === "~" && t.unmapped === true;
+    if ((isTilde(token) && isEByte(next)) || (isEByte(token) && isTilde(next))) {
+      let legacy = token.legacy + next!.legacy;
+      i += 1;
+      // A doubled ~ is still one sign (®~~a¢l তৈরি), as ÚÚ is one hasant.
+      while (isTilde(tokens[i + 1])) {
+        legacy += tokens[i + 1].legacy;
+        i += 1;
+      }
+      output.push({ legacy, unicode: "ৈ", reorder: "before-consonant", sourceIndex: token.sourceIndex });
+      continue;
+    }
+    // আ has its own byte (B), but this layout also builds it as অ + া
+    // (A¡Ce আইন, A¡−hc£e আবেদীন). অ + া is not a Unicode spelling of আ, so
+    // the pair is merged here — not tabled, for the same length-ratio reason.
+    if (token.unicode === "অ" && next?.unicode === "া") {
+      output.push({ legacy: token.legacy + next.legacy, unicode: "আ", reorder: "none", sourceIndex: token.sourceIndex });
+      i += 1;
+      continue;
+    }
     const firstHalf = FIRST_HALF_OF_1[token.legacy];
     if (firstHalf && tokens[i + 1]?.reorder === "reph") {
       const gap = tokens[i + 2]?.legacy === " " ? 1 : 0;

@@ -402,6 +402,9 @@ export const bijoyRules: GlyphRule[] = [
   { match: "Ì", unicode: "ত্থ", reorder: "none" },
   { match: "Zœ", unicode: "ত্ন", reorder: "none" },
   { match: "Z¡", unicode: "ত্ব", reorder: "none" },
+  // "Í" alone is ত্ম (AvÍv = আত্মা), but "šÍ" is ন্ত: the same document spells
+  // পর্যন্ত "ch©šÍ". Longest match again.
+  { match: "šÍ", unicode: "ন্ত", reorder: "none" },
   { match: "Í", unicode: "ত্ম", reorder: "none" },
   { match: "Î", unicode: "ত্র", reorder: "none" },
   { match: "_¡", unicode: "থ্ব", reorder: "none" },
@@ -459,6 +462,9 @@ export const bijoyRules: GlyphRule[] = [
   { match: "f¡", unicode: "ভ্ব", reorder: "none" },
   { match: "å", unicode: "ভ্র", reorder: "none" },
   { match: "f¬", unicode: "ভ্ল", reorder: "none" },
+  // "æ" alone is ম্ন (wbæ = নিম্ন), but "iæ" is রু: a real SutonnyMJ court
+  // document spells বিরুদ্ধে "weiæ‡×". The 2-byte entry wins by longest match.
+  { match: "iæ", unicode: "রু", reorder: "none" },
   { match: "æ", unicode: "ম্ন", reorder: "none" },
   { match: "¤c", unicode: "ম্প", reorder: "none" },
   { match: "¤cÖ", unicode: "ম্প্র", reorder: "none" },
@@ -492,6 +498,8 @@ export const bijoyRules: GlyphRule[] = [
   { match: "ñ", unicode: "শ্ছ", reorder: "none" },
   { match: "kœ", unicode: "শ্ন", reorder: "none" },
   { match: "k¦", unicode: "শ্ব", reorder: "none" },
+  // Second ব-ফলা form, as in "K¡"/"R¡"/"Z¡" above ("wek¡bv_" = বিশ্বনাথ).
+  { match: "k¡", unicode: "শ্ব", reorder: "none" },
   { match: "k¥", unicode: "শ্ম", reorder: "none" },
   { match: "kª", unicode: "শ্র", reorder: "none" },
   { match: "k­", unicode: "শ্ল", reorder: "none" },

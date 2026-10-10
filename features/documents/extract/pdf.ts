@@ -1,4 +1,5 @@
 import { getDocumentProxy, getResolvedPDFJS } from "unpdf";
+import { looksLikeGlyphOrderText } from "@/features/converter/engine/diagnose";
 import type { SourceRun } from "@/features/converter/engine/fontRuns";
 import { AppErrors, err, ok, type Result } from "@/lib/errors/types";
 import type { ExtractedDocument } from "./types";
@@ -19,6 +20,28 @@ const FONT_RESOLUTION_BUDGET_MS = 6_000;
  * complex-script Bengali — rather than holding a few figures.
  */
 const IMAGE_TEXT_PAINTS_PER_PAGE = 15;
+
+/** Less text than this on a page in one font is too little to judge. */
+const MIN_NO_TEXT_MAP_CHARS = 20;
+/** Share of C0 control characters no real text layer ever has. */
+const MIN_CONTROL_SHARE = 0.1;
+const C0_CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/u;
+const BENGALI = /[ঀ-৿]/u;
+
+/**
+ * True for one font's text on a page when it is glyph codes, not letters: an
+ * embedded subset font with no text map (`ToUnicode`), so pdf.js hands back
+ * the font's internal codes in order of first use. WP 6736/2020 sets its
+ * quoted Bengali notices in such a Vrinda subset, and pages 9–11 and 13 came
+ * back about half C0 control characters with `! " # $` between them.
+ * No encoding table can read that; only the page image can.
+ */
+export function isNoTextMapText(text: string): boolean {
+  const chars = [...text].filter((char) => !/\s/u.test(char));
+  if (chars.length < MIN_NO_TEXT_MAP_CHARS || BENGALI.test(text)) return false;
+  const controls = chars.filter((char) => C0_CONTROL.test(char)).length;
+  return controls / chars.length >= MIN_CONTROL_SHARE || looksLikeGlyphOrderText(text);
+}
 
 interface PdfTextItem {
   str: string;
@@ -58,6 +81,7 @@ export function formatPageList(pages: readonly number[]): string {
 export async function extractPdfText(buffer: Buffer, fileName: string): Promise<Result<ExtractedDocument>> {
   const runs: SourceRun[] = [];
   const imageTextPages: number[] = [];
+  const noTextMapPages: number[] = [];
   let totalPages: number;
 
   try {
@@ -93,6 +117,7 @@ export async function extractPdfText(buffer: Buffer, fileName: string): Promise<
 
       if (pageNumber > 1) runs.push({ text: "\n\n", fontKey: "layout" });
 
+      const textByFont = new Map<string, string>();
       let previous: { y: number; height: number; endedLine: boolean } | null = null;
       for (const item of content.items) {
         if (!isTextItem(item) || item.str.length === 0) {
@@ -110,9 +135,11 @@ export async function extractPdfText(buffer: Buffer, fileName: string): Promise<
           runs.push({ text: "\n", fontKey: "layout" });
         }
         runs.push({ text: item.str, fontKey: item.fontName, fontName: fontNameOf(item.fontName) });
+        textByFont.set(item.fontName, (textByFont.get(item.fontName) ?? "") + item.str + " ");
         if (item.hasEOL) runs.push({ text: "\n", fontKey: "layout" });
         previous = { y, height, endedLine: item.hasEOL };
       }
+      if ([...textByFont.values()].some(isNoTextMapText)) noTextMapPages.push(pageNumber);
     }
   } catch (cause) {
     return err(
@@ -133,6 +160,14 @@ export async function extractPdfText(buffer: Buffer, fileName: string): Promise<
     );
   }
 
+  if (noTextMapPages.length > 0) {
+    notes.push(
+      `${noTextMapPages.length === 1 ? "Page" : "Pages"} ${formatPageList(noTextMapPages)} set some text in a font ` +
+        "with no text map, so the PDF stores glyph codes instead of letters. That text cannot be converted and " +
+        "comes through as symbols — read those pages with the OCR tool.",
+    );
+  }
+
   if (text.trim().length === 0) {
     return err(
       AppErrors.fileProcessing(
@@ -149,6 +184,7 @@ export async function extractPdfText(buffer: Buffer, fileName: string): Promise<
     fileType: "pdf",
     pageCount: totalPages,
     imageTextPages,
+    noTextMapPages,
     notes: notes.length > 0 ? notes : undefined,
   });
 }

@@ -30,6 +30,7 @@ export function classifyValidationWarning(message: string): FailureCategory {
   if (message.includes("reorder defect")) return "reorder_defect";
   if (message.includes("Normalization Form C")) return "normalization_warning";
   if (message.includes("is both Latin punctuation and a legacy byte")) return "ambiguous_typography";
+  if (message.includes("no text map") || message.includes("belong to")) return "invalid_encoding";
   return "unknown";
 }
 

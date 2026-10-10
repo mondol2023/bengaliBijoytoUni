@@ -17,4 +17,6 @@ export interface ExtractedDocument {
   runs?: SourceRun[];
   /** PDF-specific: pages that appear to draw their text as images (needs OCR). */
   imageTextPages?: number[];
+  /** PDF-specific: pages holding text in a font with no text map (glyph codes, needs OCR). */
+  noTextMapPages?: number[];
 }

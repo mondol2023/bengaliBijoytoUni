@@ -27,6 +27,18 @@ describe("assessConversionQuality", () => {
     expect(needsAiFallback(quality)).toBe(true);
   });
 
+  it("counts pages whose text has no text map as unreadable, once even when also images", () => {
+    const quality = assessConversionQuality({
+      confidence: 1,
+      pageCount: 10,
+      imageTextPages: [2],
+      noTextMapPages: [2, 9, 10],
+    });
+    expect(quality.coverage).toBeCloseTo(7 / 10);
+    expect(quality.reasons).toEqual(["image-pages", "no-text-map"]);
+    expect(needsAiFallback(quality)).toBe(true);
+  });
+
   it("falls below the bar on mapping alone", () => {
     const quality = assessConversionQuality({ confidence: 0.62 });
     expect(quality.reasons).toEqual(["low-mapping"]);

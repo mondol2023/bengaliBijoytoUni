@@ -259,7 +259,7 @@ export function ConverterWorkspace() {
                 <span className="font-sans text-sm text-foreground/60">Converted Bengali appears here.</span>
               )}
             </div>
-            <ConversionWarnings validation={output?.validation ?? null} />
+            <ConversionWarnings validation={output?.validation ?? null} onUseEncoding={setEncodingChoice} />
             {fallback && resolvedEncodingId && (
               <FallbackSummary fallback={fallback} encodingId={resolvedEncodingId} wordCount={wordCount} />
             )}

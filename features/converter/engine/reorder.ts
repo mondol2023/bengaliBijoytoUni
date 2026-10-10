@@ -48,7 +48,11 @@ function rephInsertIndex(output: Token[]): number {
   if (at > 0) at -= 1;
   while (at > 0) {
     if (VIRAMA_ONLY.test(output[at - 1].unicode)) at -= 2;
-    else if (JOINS_NEXT.test(output[at - 1].unicode)) at -= 1;
+    // A reph already placed ("র্") ends in a hasant, so JOINS_NEXT matches it
+    // too, but it is not a half form of the cluster being scanned. Skipping
+    // back through it walked every earlier reph in the output — O(n^2) over a
+    // run of them — and changes no result: the string is the same either way.
+    else if (output[at - 1].reorder !== "reph" && JOINS_NEXT.test(output[at - 1].unicode)) at -= 1;
     else break;
   }
   return Math.max(at, 0);

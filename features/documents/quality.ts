@@ -20,7 +20,7 @@
 /** Below this, the result is not good enough to stand on its own. */
 export const AI_FALLBACK_THRESHOLD = 0.8;
 
-export type QualityReason = "low-mapping" | "image-pages";
+export type QualityReason = "low-mapping" | "image-pages" | "no-text-map";
 
 export interface ConversionQuality {
   /** 0..1 — `mapping × coverage`, rounded to two decimals. */
@@ -36,15 +36,20 @@ export function assessConversionQuality(input: {
   confidence: number;
   pageCount?: number | null;
   imageTextPages?: readonly number[] | null;
+  /** Pages whose text is glyph codes from a font with no text map; as unreadable as an image. */
+  noTextMapPages?: readonly number[] | null;
 }): ConversionQuality {
   const mapping = clamp01(input.confidence);
   const pages = input.pageCount ?? 0;
   const imagePages = input.imageTextPages?.length ?? 0;
-  const coverage = pages > 0 ? clamp01((pages - imagePages) / pages) : 1;
+  const noTextMapPages = input.noTextMapPages?.length ?? 0;
+  const unreadable = new Set([...(input.imageTextPages ?? []), ...(input.noTextMapPages ?? [])]).size;
+  const coverage = pages > 0 ? clamp01((pages - unreadable) / pages) : 1;
 
   const reasons: QualityReason[] = [];
   if (mapping < AI_FALLBACK_THRESHOLD) reasons.push("low-mapping");
   if (imagePages > 0) reasons.push("image-pages");
+  if (noTextMapPages > 0) reasons.push("no-text-map");
 
   return { score: Math.round(mapping * coverage * 100) / 100, mapping, coverage, reasons };
 }

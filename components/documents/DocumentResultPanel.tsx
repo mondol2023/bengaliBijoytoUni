@@ -84,6 +84,7 @@ function QualityLine({ quality }: { quality: DocumentConversionResult["quality"]
   const low = quality.score < AI_FALLBACK_THRESHOLD;
   const why = [
     quality.reasons.includes("image-pages") && `${Math.round((1 - quality.coverage) * 100)}% of pages are images`,
+    quality.reasons.includes("no-text-map") && "some pages hold glyph codes, not text",
     quality.reasons.includes("low-mapping") && `${Math.round(quality.mapping * 100)}% of the legacy text matched a rule`,
   ].filter(Boolean);
 

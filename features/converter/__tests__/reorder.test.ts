@@ -51,4 +51,27 @@ describe("reorderTokens", () => {
   it("handles empty input", () => {
     expect(reorderTokens([])).toEqual([]);
   });
+  describe("repeated rephs (scan cost)", () => {
+    // A reph already placed in the output ends in a hasant, which the
+    // half-form pattern also matches. The back-scan used to walk through every
+    // earlier reph, so n rephs cost O(n^2): 20,000 of them took ~8 s and froze
+    // the tab on a long run of stray reph bytes.
+    it("places a long run of rephs in linear time", () => {
+      const rephs = Array.from({ length: 20000 }, () => token("©", "র্", "reph"));
+      const started = performance.now();
+      const result = reorderTokens(rephs);
+      const elapsed = performance.now() - started;
+      expect(result).toHaveLength(20000);
+      expect(elapsed).toBeLessThan(1000);
+    });
+
+    it("keeps the output of a doubled reph unchanged", () => {
+      const result = reorderTokens([
+        token("K", "ক"),
+        token("©", "র্", "reph"),
+        token("©", "র্", "reph"),
+      ]);
+      expect(result.map((t) => t.unicode).join("")).toBe("র্র্ক");
+    });
+  });
 });

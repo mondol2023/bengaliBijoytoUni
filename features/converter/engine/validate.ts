@@ -36,6 +36,12 @@ export interface ValidationResult {
    * did not change. Advisory: they do not make the conversion invalid.
    */
   sourceSignals: SourceSignal[];
+  /**
+   * Another registered encoding that maps most of the unmapped bytes, so the
+   * text was probably converted with the wrong table. Lets the UI offer a
+   * one-click re-convert; see `findForeignEncoding`.
+   */
+  suggestedEncodingId?: string;
 }
 
 /** The Bengali Unicode block. Legacy CP1252 source text contains none of it. */
@@ -90,6 +96,8 @@ const CONTEXT_TOKENS = 8;
 const MAX_CONTEXTS = 3;
 /** Sequences whose context is spelled out when details are rendered as prose. */
 export const MAX_DETAILED_SEQUENCES = 8;
+/** Distinct sequences named in the one-line warning; the rest are counted. */
+const MAX_WARNING_SEQUENCES = 20;
 
 function contextAround(tokens: Token[], index: number): string {
   const before = tokens
@@ -138,18 +146,24 @@ export function validateTokens(tokens: Token[]): ValidationResult {
     positions: indices.slice(0, MAX_CONTEXTS).map((index) => tokens[index].sourceIndex),
   }));
 
+  // Most-frequent first: the byte that occurs most is both the most damaging
+  // to the output and the easiest to identify from the surrounding words.
+  unmappedDetails.sort((a, b) => b.count - a.count);
+
   const unmappedSequences = unmappedDetails.map((detail) => detail.sequence);
   const total = unmappedDetails.reduce((sum, detail) => sum + detail.count, 0);
 
   if (unmappedSequences.length > 0) {
+    // Capped: text in the wrong script makes every character its own
+    // sequence, and a warning naming thousands of them is unreadable and bloats
+    // every log row it is copied into. The full list stays in `unmappedDetails`.
+    const named = unmappedSequences.slice(0, MAX_WARNING_SEQUENCES).join(", ");
+    const more = unmappedSequences.length - MAX_WARNING_SEQUENCES;
     warnings.push(
-      `${total} character(s) had no mapping rule and were passed through unchanged: ${unmappedSequences.join(", ")}`
+      `${total} character(s) had no mapping rule and were passed through unchanged: ${named}` +
+        (more > 0 ? ` …and ${more} more` : "")
     );
   }
-
-  // Most-frequent first: the byte that occurs most is both the most damaging
-  // to the output and the easiest to identify from the surrounding words.
-  unmappedDetails.sort((a, b) => b.count - a.count);
 
   return {
     valid: unmappedSequences.length === 0,

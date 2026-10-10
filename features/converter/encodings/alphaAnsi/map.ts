@@ -165,11 +165,34 @@ export const alphaAnsiRules: GlyphRule[] = [
   { match: "Øq", unicode: "স্থ", reorder: "none" }, // EfØq¡fe উপস্থাপন
   { match: "¿¹", unicode: "ন্ত", reorder: "none" }, // ¢pÜ¡¿¹ সিদ্ধান্ত
   { match: "¿»", unicode: "ন্ত্র", reorder: "none" }, // j¿»Z¡mu মন্ত্রণালয়
+
+  // --- Bytes from a third document (a land-suit plaint) ---
+  // Aligned against the document's own converted text: every entry is backed
+  // by at least two distinct words, and º/¨ by the layout's byte order.
+  // º is to ¹ what ু is to the bare conjunct: "কি¿º" কিন্তু, "প্রÙºতি" প্রস্তুতি.
+  { match: "¿º", unicode: "ন্তু", reorder: "none" },
+  { match: "Ùº", unicode: "স্তু", reorder: "none" },
+  { match: "õ", unicode: "ল্ল", reorder: "none" }, // উল্লেখিত, মোতাওয়াল্লি
+  { match: "ý", unicode: "হু", reorder: "none" }, // রুহুল, হুমকি
+  // Bytes the raw plaint pinned (every one read off its own words):
+  { match: "å", unicode: "ন্ধ", reorder: "none" }, // অনুসন্ধান ×6. Also in "fË¢aà¢åa¡", which reads প্রতিদ্বন্ধিতা — likely the document's own typo for ন্দ্ব, so not read from it.
+  { match: "´", unicode: "ঙ্", reorder: "none" }, // f¤´M পুঙ্খ (half form, like Ø Ç Ö)
+  { match: "Õ", unicode: "শ্", reorder: "none" }, // ¢e¢ÕQa নিশ্চিত (half form; neighbours Ö = ষ্)
   { match: "…l¦", unicode: "গুরু", reorder: "none" }, // …l¦aÄ গুরুত্ব (a bare … stays an ellipsis)
   // "~®" is ৈ in this document (l¡S~®e¢aL রাজনৈতিক) but is deliberately not
   // a rule: it is the only two-bytes-to-one-character entry, and it would
   // drop this table's minimum length ratio below 1, loosening the check in
-  // lib/conversionFailures/resolutionValidator.ts. It surfaces as unmapped.
+  // lib/conversionFailures/resolutionValidator.ts. `rules.ts` merges the pair
+  // after tokenizing instead (also জ~েনক জনৈক, ~েপত্রিক পৈত্রিক).
+  // --- Bytes from two High Court judgments uploaded as PDFs (WP 6736/2020,
+  // WP 7824/2016). Each expected word was read off the rendered page. ---
+  { match: "…ç", unicode: "গুপ্ত", reorder: "none" }, // …ç l¡u গুপ্ত রায় ×10
+  { match: "…f¹", unicode: "গুপ্ত", reorder: "none" }, // the same name once spelled with ¹
+  { match: "Ù»", unicode: "স্ত্র", reorder: "none" }, // Ù»£ স্ত্রী ×2; » is to ¹ as in ¿» / ¿¹
+  { match: "ó", unicode: "ল্ক", reorder: "none" }, // öó¡ue শুল্কায়ন ×7
+  { match: "ñ", unicode: "ম্ভ", reorder: "none" }, // pñ¡hÉ সম্ভাব্য, pñ¡he¡ সম্ভাবনা
+  { match: "ï", unicode: "ভ্র", reorder: "none" }, // ï¡a¡ ভ্রাতা
+  { match: "ë", unicode: "ব্ধ", reorder: "none" }, // pwr¥ë সংক্ষুব্ধ
   { match: "š", unicode: "ত্ত", reorder: "none" }, // pÇf¢š সম্পত্তি
   { match: "Ü", unicode: "দ্ধ", reorder: "none" },
   { match: "Ÿ", unicode: "দ্দ", reorder: "none" }, // ®j¡LŸj¡ মোকদ্দমা
@@ -210,6 +233,7 @@ export const alphaAnsiRules: GlyphRule[] = [
   { match: "Å", unicode: "্ব", reorder: "none" },
   { match: "Æ", unicode: "্ব", reorder: "none" }, // pšÆ সত্ত্ব
   { match: "Ô", unicode: "্ল", reorder: "none" }, // pw¢nÔø সংশ্লিষ্ট
+  { match: "Ó", unicode: "্ল", reorder: "none" }, // LÓ¡EX ক্লাউড
   { match: "À", unicode: "্ন", reorder: "none" }, // ¢ejÀ নিম্ন
   { match: "È", unicode: "্ম", reorder: "none" }, // pÈ¡lL স্মারক
 
@@ -222,6 +246,7 @@ export const alphaAnsiRules: GlyphRule[] = [
   { match: "¤", unicode: "ু", reorder: "after-consonant" },
   { match: "¥", unicode: "ু", reorder: "after-consonant" },
   { match: "§", unicode: "ূ", reorder: "after-consonant" },
+  { match: "¨", unicode: "ূ", reorder: "after-consonant" }, // i¨¢j ভূমি; the middle of the § ¨ © run
   { match: "ª", unicode: "ৃ", reorder: "after-consonant" },
   { match: "®", unicode: "ে", reorder: "before-consonant" },
   { match: "−", unicode: "ে", reorder: "before-consonant" },

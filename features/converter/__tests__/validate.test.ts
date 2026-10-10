@@ -6,6 +6,30 @@ import {
 } from "../engine/validate";
 import type { Token } from "../encodings/types";
 
+describe("validateTokens warning size", () => {
+  // Pasting the wrong script (CJK, say) makes every character a distinct
+  // unmapped sequence. The warning used to name all of them: ~20,000 entries
+  // in one string, shown in the UI and copied into the error log.
+  it("names only the most frequent sequences and counts the rest", () => {
+    const tokens: Token[] = [];
+    for (let i = 0; i < 500; i += 1) {
+      const char = String.fromCharCode(0x4e00 + i);
+      tokens.push({ legacy: char, unicode: char, reorder: "none", unmapped: true, sourceIndex: tokens.length });
+    }
+    // One sequence repeated, so it must lead the list even though it is last.
+    for (let i = 0; i < 3; i += 1) {
+      tokens.push({ legacy: "@", unicode: "@", reorder: "none", unmapped: true, sourceIndex: tokens.length });
+    }
+    const result = validateTokens(tokens);
+    expect(result.unmappedSequences).toHaveLength(501);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain("503 character(s) had no mapping rule");
+    expect(result.warnings[0]).toContain(": @, ");
+    expect(result.warnings[0]).toContain("and 481 more");
+    expect(result.warnings[0].length).toBeLessThan(400);
+  });
+});
+
 describe("validateTokens", () => {
   it("is valid when nothing is unmapped", () => {
     const result = validateTokens([{ legacy: "K", unicode: "ক", reorder: "none", sourceIndex: 0 }]);
