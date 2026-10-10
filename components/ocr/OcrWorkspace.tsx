@@ -17,6 +17,7 @@ import type { OcrMode } from "@/features/ocr/types";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { OCR_AI_NOTE, OCR_NOTE } from "@/lib/privacy/disclosure";
 import { motionTokens, springs, staggerChildren, staggerDelayChildren } from "@/lib/motion/tokens";
+import { OcrDocumentView } from "./OcrDocumentView";
 import { OcrDropzone } from "./OcrDropzone";
 import { OcrEmptyState } from "./OcrEmptyState";
 import { OcrImproveToggle } from "./OcrImproveToggle";
@@ -239,6 +240,8 @@ export function OcrWorkspace() {
           </section>
         </div>
       )}
+
+      {hasRun && <OcrDocumentView state={state} fileName={file?.name ?? "document"} />}
 
       <motion.div variants={itemVariants} className="mt-6 border border-border bg-surface-muted px-4 py-3">
         <PrivacyNote note={aiActive ? OCR_AI_NOTE : OCR_NOTE} className="max-w-[80ch]" />
