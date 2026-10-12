@@ -2,11 +2,11 @@ import type { EncodingDefinition, GlyphRule, Token } from "../encodings/types";
 
 /**
  * Punctuation that means itself in every legacy encoding, when unmapped.
- * Includes the danda and double danda (U+0964/U+0965): the Bengali sentence
- * mark, though Unicode files it in the Devanagari block, outside every
- * Bengali-block check.
+ * Includes "=" (taka notation, "২৭,৭৬,৩২৩/=") and the danda and double danda
+ * (U+0964/U+0965): the Bengali sentence mark, though Unicode files it in the
+ * Devanagari block, outside every Bengali-block check.
  */
-const SHARED_PUNCTUATION = /[.,;:!?'"()[\]{}\-\u2010-\u2015\u2018\u2019\u201c\u201d\u2026/%\u0964\u0965]/u;
+const SHARED_PUNCTUATION = /[.,;:!?'"()[\]{}\-\u2010-\u2015\u2018\u2019\u201c\u201d\u2026/%=\u0964\u0965]/u;
 
 /**
  * ZWNJ (U+200C) and ZWJ (U+200D): Bengali cluster-shaping joiners that carry

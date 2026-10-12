@@ -179,6 +179,8 @@ export const alphaAnsiRules: GlyphRule[] = [
   { match: "´", unicode: "ঙ্", reorder: "none" }, // f¤´M পুঙ্খ (half form, like Ø Ç Ö)
   { match: "Õ", unicode: "শ্", reorder: "none" }, // ¢e¢ÕQa নিশ্চিত (half form; neighbours Ö = ষ্)
   { match: "…l¦", unicode: "গুরু", reorder: "none" }, // …l¦aÄ গুরুত্ব (a bare … stays an ellipsis)
+  { match: "…c", unicode: "গুদ", reorder: "none" }, // …c¡−jl গুদামের ×27 across two judgments
+  { match: "Q–", unicode: "চট্ট", reorder: "none" }, // Q–NË¡j চট্টগ্রাম ×13; – is ট্ট here (a bare – stays a dash)
   // "~®" is ৈ in this document (l¡S~®e¢aL রাজনৈতিক) but is deliberately not
   // a rule: it is the only two-bytes-to-one-character entry, and it would
   // drop this table's minimum length ratio below 1, loosening the check in
@@ -217,6 +219,7 @@ export const alphaAnsiRules: GlyphRule[] = [
   { match: "Ø", unicode: "স্", reorder: "none" }, // ®l¢SØVÊ¡l রেজিস্ট্রার
   { match: "Ç", unicode: "ম্", reorder: "none" }, // pÇf¢š সম্পত্তি
   { match: "Ö", unicode: "ষ্", reorder: "none" }, // ¢eÖf¢š নিষ্পত্তি
+  { match: "Ã", unicode: "প্", reorder: "none" }, // ®p−ÃVðl সেপ্টেম্বর (Ã+V = প্ট, under the pre-base −)
   { match: "Ò", unicode: "ল্", reorder: "none" }, // L−Òf কল্পে
   { match: "¾", unicode: "ন্", reorder: "none" }, // Sh¡eh¢¾c জবানবন্দি
   { match: "µ", unicode: "চ্", reorder: "none" }, // k¡−µR যাচ্ছে

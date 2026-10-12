@@ -260,6 +260,11 @@ export const bijoyRules: GlyphRule[] = [
   // `engine/detectEncoding.ts` measures exactly that, and its test caught
   // the first attempt at this fix.
   //
+  // A PDF copy path does deliver this byte as U+2212 in real Bijoy text
+  // (কুমিল্লা, উল্লেখ, ডব্লিউ in a pasted High Court appeal), so
+  // `./rules.ts` resolves an *unmapped* U+2212 to ্ল in `postProcess`, which
+  // detection never runs. See `__tests__/bijoyMinusLaFola.test.ts`.
+  //
   // 0xAC and 0xAD both stand, because both genuinely occur in this font
   // family and neither byte carries any other meaning in this table. Making
   // la-fola compositional this way matches how ra-fola and ja-fola already
@@ -405,7 +410,18 @@ export const bijoyRules: GlyphRule[] = [
   // "Í" alone is ত্ম (AvÍv = আত্মা), but "šÍ" is ন্ত: the same document spells
   // পর্যন্ত "ch©šÍ". Longest match again.
   { match: "šÍ", unicode: "ন্ত", reorder: "none" },
+  // Likewise after ¯ (স্): ev¯Íe বাস্তব, e¯Ív বস্তা — the "—" a PDF copy hands
+  // over as "Í" (see "¯—" below).
+  { match: "¯Í", unicode: "স্ত", reorder: "none" },
   { match: "Í", unicode: "ত্ম", reorder: "none" },
+  // ¥ is ্ম after any consonant here ("b¥" ন্ম, "a¥" ধ্ম), so "Z¥" completes the
+  // set: AvZ¥mvr, AvZ¥mvZ, AvZ¥mv‡Zi আত্মসাৎ / আত্মসাত — two judgments, a pair.
+  { match: "Z¥", unicode: "ত্ম", reorder: "none" },
+  // A word typed half in alpha-ANSI and half in Bijoy: "BaÈmvrK…Z" is
+  // আত্মসাৎকৃত, where "BaÈ" is the alpha-ANSI আ+ত+্ম and "mvrK…Z" the Bijoy
+  // rest. 47 occurrences in one judgment, in six spellings of the word; read as
+  // Bijoy it is ইধণ্ট, which no Bangla word starts with, so nothing is lost.
+  { match: "BaÈ", unicode: "আত্ম", reorder: "none" },
   { match: "Î", unicode: "ত্র", reorder: "none" },
   { match: "_¡", unicode: "থ্ব", reorder: "none" },
   { match: "_ª", unicode: "থ্র", reorder: "none" },

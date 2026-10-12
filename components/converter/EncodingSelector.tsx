@@ -12,12 +12,15 @@ export function EncodingSelector({
   onChange,
   resolvedEncodingId,
   detectionConfidence,
+  mixedEncodingIds = null,
 }: {
   encodings: EncodingDefinition[];
   choice: EncodingChoice;
   onChange: (choice: EncodingChoice) => void;
   resolvedEncodingId: string | undefined;
   detectionConfidence: number;
+  /** Set when the text was split between two legacy fonts (`useConversion`). */
+  mixedEncodingIds?: string[] | null;
 }) {
   const options: SelectOption[] = [
     { value: AUTO_DETECT, label: "Auto-detect" },
@@ -25,6 +28,9 @@ export function EncodingSelector({
   ];
 
   const resolvedEncoding = encodings.find((encoding) => encoding.id === resolvedEncodingId);
+  const mixedNames = (mixedEncodingIds ?? []).map(
+    (id) => encodings.find((encoding) => encoding.id === id)?.name ?? id,
+  );
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -42,7 +48,14 @@ export function EncodingSelector({
       {/* Detection is live engine state, so it reads in the mono readout
           style — terracotta once something is detected, muted while waiting.
           Nothing is shown before there is input to detect from. */}
-      {choice === AUTO_DETECT && resolvedEncoding && (
+      {choice === AUTO_DETECT && mixedNames.length > 1 && (
+        <Tooltip content="This text is set in more than one legacy font. Each stretch was converted with the table for its own font; a word with no sign of either follows the words around it.">
+          <span className="cursor-help font-mono text-xs text-accent">
+            Mixed fonts · {mixedNames.join(" + ")}
+          </span>
+        </Tooltip>
+      )}
+      {choice === AUTO_DETECT && mixedNames.length <= 1 && resolvedEncoding && (
         <span className="font-mono text-xs tabular-nums text-accent">
           {resolvedEncoding.name} · {Math.round(detectionConfidence * 100)}%
         </span>

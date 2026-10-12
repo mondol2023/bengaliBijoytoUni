@@ -50,6 +50,7 @@ export type FontDecisionReason =
   | "detected"
   | "document-fallback"
   | "user-choice"
+  | "text-segment"
   | "undetermined";
 
 export interface RunsConversionOutput extends ConversionOutput {
@@ -165,6 +166,16 @@ export function hasLegacyEvidence(text: string): boolean {
   return flipped / words.length >= 0.3;
 }
 
+export interface RunsOptions {
+  encodingOverride?: string;
+  /**
+   * Fonts whose encoding the caller already knows, keyed by `fontKey` (pasted
+   * text split by `mixedText.ts`, where the "font" is a label the splitter
+   * assigned). They skip classification; an `encodingOverride` still wins.
+   */
+  knownEncodings?: Readonly<Record<string, string>>;
+}
+
 /**
  * Decides, per font, whether its text is legacy Bengali (and in which
  * encoding) or something to leave alone.
@@ -180,7 +191,7 @@ export function hasLegacyEvidence(text: string): boolean {
  */
 export function classifyFonts(
   runs: readonly SourceRun[],
-  options: { encodingOverride?: string } = {},
+  options: RunsOptions = {},
 ): Map<string, FontDecision> {
   const byFont = new Map<string, { name: string | null; text: string[] }>();
   for (const run of runs) {
@@ -199,7 +210,10 @@ export function classifyFonts(
     const byName = verdictForFontName(name);
 
     let decision: FontDecision | undefined;
-    if (byName?.kind === "keep") {
+    const known = options.knownEncodings?.[fontKey];
+    if (known) {
+      decision = { kind: "legacy", encodingId: known, reason: "text-segment" };
+    } else if (byName?.kind === "keep") {
       decision = { kind: "keep", reason: "font-name" };
     } else if (bengaliShare(joined) > 0.5) {
       decision = { kind: "keep", reason: "already-unicode" };
@@ -332,7 +346,7 @@ function mergeSignals(target: Map<string, SourceSignal>, signals: SourceSignal[]
  */
 export function convertRuns(
   runs: readonly SourceRun[],
-  options: { encodingOverride?: string } = {},
+  options: RunsOptions = {},
 ): Result<RunsConversionOutput, AppError> {
   if (options.encodingOverride && !getEncoding(options.encodingOverride)) {
     return err(

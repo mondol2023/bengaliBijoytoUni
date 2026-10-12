@@ -63,10 +63,10 @@ describe("convertRuns", () => {
   });
 
   it("shifts unmapped positions into the combined source text", () => {
-    const output = convert([times("Title Suit No. 83 of 1994 "), adarsha("L¡Ã")]);
+    const output = convert([times("Title Suit No. 83 of 1994 "), adarsha("L¡Þ")]);
     const [detail] = output.validation.unmappedDetails;
-    expect(detail.sequence).toBe("Ã");
-    expect(output.sourceText.slice(detail.positions[0], detail.positions[0] + 1)).toBe("Ã");
+    expect(detail.sequence).toBe("Þ");
+    expect(output.sourceText.slice(detail.positions[0], detail.positions[0] + 1)).toBe("Þ");
   });
 
   it("applies the user's encoding to legacy text only", () => {

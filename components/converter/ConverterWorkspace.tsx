@@ -64,6 +64,7 @@ export function ConverterWorkspace() {
     encodings,
     detectionConfidence,
     resolvedEncodingId,
+    mixedEncodingIds,
     usage,
     isOverLimit,
     output,
@@ -130,9 +131,11 @@ export function ConverterWorkspace() {
   const hasInput = inputText.trim().length > 0;
   const statusMarker = !hasInput
     ? "Waiting for text"
-    : resolvedEncoding
-      ? `${resolvedEncoding.name} · ${encodingChoice === AUTO_DETECT ? "detected" : "chosen"}`
-      : "No confident match";
+    : mixedEncodingIds && mixedEncodingIds.length > 1
+      ? "Mixed fonts · detected"
+      : resolvedEncoding
+        ? `${resolvedEncoding.name} · ${encodingChoice === AUTO_DETECT ? "detected" : "chosen"}`
+        : "No confident match";
 
   return (
     <motion.main
@@ -162,6 +165,7 @@ export function ConverterWorkspace() {
           onChange={setEncodingChoice}
           resolvedEncodingId={resolvedEncodingId}
           detectionConfidence={detectionConfidence}
+          mixedEncodingIds={mixedEncodingIds}
         />
         <TierSelector tier={tier} onChange={setTier} />
       </motion.div>

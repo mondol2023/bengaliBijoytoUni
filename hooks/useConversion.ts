@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { detectEncoding, type ConversionOutput } from "@/features/converter/engine/pipeline";
+import { convertMixedLegacy } from "@/features/converter/engine/mixedText";
 import {
   computeConversion,
   fallbackFailureIssue,
@@ -35,6 +36,12 @@ export interface UseConversionResult {
   detectionConfidence: number;
   /** The encoding id actually driving conversion right now. */
   resolvedEncodingId: string | undefined;
+  /**
+   * The encodings the text was split between, when auto-detect found it set in
+   * two legacy fonts at once (see `engine/mixedText.ts`); null otherwise.
+   * `resolvedEncodingId` is then the one covering most of the text.
+   */
+  mixedEncodingIds: string[] | null;
   usage: UsageCheck;
   isOverLimit: boolean;
   isPending: boolean;
@@ -69,10 +76,27 @@ export function useConversion(initialTier: TierId = "easy"): UseConversionResult
   const encodings = useMemo(() => listEncodings(), []);
 
   const detection = useMemo(() => detectEncoding(debouncedText), [debouncedText]);
-  const resolvedEncodingId =
-    encodingChoice === AUTO_DETECT ? detection.encodingId : encodingChoice;
-
   const usage = useMemo(() => checkUsage(debouncedText, tier), [debouncedText, tier]);
+
+  // Only auto-detect splits a text between fonts: an explicit choice is an
+  // instruction to convert all of it with that table. Skipped past the tier
+  // limit, where nothing is converted anyway.
+  const mixed = useMemo(
+    () =>
+      encodingChoice === AUTO_DETECT && usage.withinLimit && debouncedText.length > 0
+        ? convertMixedLegacy(debouncedText)
+        : null,
+    [encodingChoice, usage.withinLimit, debouncedText],
+  );
+  const mixedOutput = mixed?.ok ? mixed.value : null;
+  const mixedEncodingIds = mixedOutput ? Object.keys(mixedOutput.convertedChars) : null;
+
+  const resolvedEncodingId =
+    encodingChoice !== AUTO_DETECT
+      ? encodingChoice
+      : mixedOutput
+        ? mixedOutput.encodingId
+        : detection.encodingId;
 
   // Deliberately on the live text, not the debounced text — a word count that
   // lags the caret reads as a bug. Memoized so it only re-scans when the text
@@ -115,6 +139,11 @@ export function useConversion(initialTier: TierId = "easy"): UseConversionResult
     if (debouncedText.length === 0) return none;
     if (!usage.withinLimit) return none;
     if (!resolvedEncodingId) return none;
+    if (mixed) {
+      return mixed.ok
+        ? { output: mixed.value, error: null, fallback: null, fallbackFailed: false }
+        : { output: null, error: mixed.error, fallback: null, fallbackFailed: false };
+    }
 
     return computeConversion({
       text: debouncedText,
@@ -122,7 +151,7 @@ export function useConversion(initialTier: TierId = "easy"): UseConversionResult
       pipelineEnabled,
       resolutions,
     });
-  }, [debouncedText, resolvedEncodingId, usage.withinLimit, pipelineEnabled, resolutions]);
+  }, [debouncedText, resolvedEncodingId, usage.withinLimit, pipelineEnabled, resolutions, mixed]);
 
   // A pipeline that threw has already degraded to the engine's own output
   // (`computeConversion`); this only makes the failure visible to whoever
@@ -143,6 +172,7 @@ export function useConversion(initialTier: TierId = "easy"): UseConversionResult
     detectedEncodingId: detection.encodingId,
     detectionConfidence: detection.confidence,
     resolvedEncodingId,
+    mixedEncodingIds,
     usage,
     isOverLimit: !usage.withinLimit,
     isPending,

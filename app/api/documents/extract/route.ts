@@ -8,6 +8,7 @@ import {
   formatUnmappedDetails,
 } from "@/features/converter/engine/pipeline";
 import { convertRuns } from "@/features/converter/engine/fontRuns";
+import { convertMixedLegacy } from "@/features/converter/engine/mixedText";
 import { extractDocumentText } from "@/features/documents/extract";
 import { assessConversionQuality } from "@/features/documents/quality";
 import { rejectOversizeFile, rejectOversizeRequest } from "@/features/documents/uploadGuard";
@@ -164,7 +165,12 @@ export async function POST(request: NextRequest) {
   const detection = fontAware ? undefined : detectEncoding(text);
   const resolvedEncodingId = encodingChoice === AUTO_DETECT ? detection?.encodingId : encodingChoice;
 
-  if (!fontAware && (!resolvedEncodingId || !getEncoding(resolvedEncodingId))) {
+  // Text with no font information that nonetheless mixes two legacy fonts
+  // (headers in one, the body in the other) is split by what each word shows.
+  // Only on auto-detect: a chosen encoding is an instruction.
+  const mixedResult = !fontAware && encodingChoice === AUTO_DETECT ? convertMixedLegacy(text) : null;
+
+  if (!fontAware && !mixedResult && (!resolvedEncodingId || !getEncoding(resolvedEncodingId))) {
     const error = AppErrors.validation("Could not determine a source encoding for this document.", {
       details: { field: "encodingId" },
     });
@@ -182,7 +188,7 @@ export async function POST(request: NextRequest) {
 
   const runsResult = fontAware
     ? convertRuns(runs, { encodingOverride: encodingChoice === AUTO_DETECT ? undefined : encodingChoice })
-    : undefined;
+    : (mixedResult ?? undefined);
   const conversion =
     runsResult ?? convertDocument({ extractedText: text, encodingId: resolvedEncodingId!, fileName: file.name });
   if (!conversion.ok) {
